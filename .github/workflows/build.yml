@@ -44,13 +44,11 @@ jobs:
             sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' "$GRADLE" || true
             sed -i 's/minSdk flutter.minSdkVersion/minSdk 23/' "$GRADLE" || true
           fi
-          # Bump Kotlin to 1.9.24 in settings.gradle.kts (default 1.7/1.8 is too old for plugins)
-          SETTINGS=android/settings.gradle.kts
-          if [ -f "$SETTINGS" ]; then
-            sed -i 's/id("org.jetbrains.kotlin.android") version "[0-9.]*"/id("org.jetbrains.kotlin.android") version "1.9.24"/' "$SETTINGS" || true
-            sed -i 's/id("com.android.application") version "[0-9.]*"/id("com.android.application") version "8.3.0"/' "$SETTINGS" || true
-          fi
-          echo "--- settings.gradle.kts ---"; cat android/settings.gradle.kts 2>/dev/null | grep -E "kotlin|android.application" || true
+          # Apply known-good Android toolchain (Kotlin 1.9.24, AGP 8.3.0, Gradle 8.4)
+          [ -f android/settings.gradle.kts ] && cp android-overrides/settings.gradle.kts android/settings.gradle.kts || true
+          cp android-overrides/gradle-wrapper.properties android/gradle/wrapper/gradle-wrapper.properties || true
+          echo "--- settings ---"; grep -iE "kotlin|android.application" android/settings.gradle.kts || true
+          echo "--- wrapper ---"; grep distributionUrl android/gradle/wrapper/gradle-wrapper.properties || true
           echo "--- app gradle ---"; grep -nE "minSdk|compileSdk|ndkVersion" "$GRADLE" || true
 
       - name: Get dependencies
