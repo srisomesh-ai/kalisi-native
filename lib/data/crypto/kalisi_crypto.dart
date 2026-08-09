@@ -18,7 +18,7 @@ class KalisiCrypto {
   // platform backend is registered; DartCryptography implements them directly.
   static final _ecdh = Ecdh.p256(length: 32);
   static final _aes = AesGcm.with256bits();
-  static final _sha256 = DartSha256();
+  static final _sha256 = Sha256();
 
   /// Generate a new identity keypair. Returns (privateJwk, publicJwk) as JSON strings.
   static Future<({String privateJwk, String publicJwk})> generateKeyPair() async {
