@@ -1,0 +1,128 @@
+import 'dart:io';
+import 'package:drift/drift.dart';
+import 'package:drift/native.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+
+part 'database.g.dart';
+
+/// Personas = identities on this device. Each has its own keypair + @username.
+class Personas extends Table {
+  TextColumn get id => text()(); // local uuid
+  TextColumn get kalId => text()(); // KAL-XXXX-XXXX from server
+  TextColumn get username => text()();
+  TextColumn get name => text()();
+  TextColumn get token => text()(); // auth token from server
+  TextColumn get privateJwk => text()();
+  TextColumn get publicJwk => text()();
+  BoolColumn get active => boolean().withDefault(const Constant(false))();
+  IntColumn get createdAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Contacts belong to a persona.
+class Contacts extends Table {
+  TextColumn get id => text()(); // local uuid
+  TextColumn get personaId => text()();
+  TextColumn get kalId => text()();
+  TextColumn get username => text().nullable()();
+  TextColumn get name => text()();
+  TextColumn get publicJwk => text().nullable()();
+  BoolColumn get verified => boolean().withDefault(const Constant(false))();
+  BoolColumn get blocked => boolean().withDefault(const Constant(false))();
+  IntColumn get timer => integer().withDefault(const Constant(0))(); // disappearing seconds
+  IntColumn get lastSeen => integer().withDefault(const Constant(0))();
+  IntColumn get createdAt => integer()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Messages belong to a contact.
+class Messages extends Table {
+  TextColumn get id => text()(); // client id (cid)
+  TextColumn get contactId => text()();
+  TextColumn get personaId => text()();
+  TextColumn get fromMe => text()(); // 'me' | 'them'
+  TextColumn get kind => text().withDefault(const Constant('text'))(); // text|img|voice
+  TextColumn get body => text().nullable()();
+  TextColumn get mediaPath => text().nullable()();
+  IntColumn get ts => integer()();
+  TextColumn get status => text().withDefault(const Constant('sent'))(); // sent|delivered|read
+  BoolColumn get burn => boolean().withDefault(const Constant(false))();
+  BoolColumn get burned => boolean().withDefault(const Constant(false))();
+  IntColumn get expireAt => integer().nullable()();
+  TextColumn get reactionMine => text().nullable()();
+  TextColumn get reactionTheirs => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+@DriftDatabase(tables: [Personas, Contacts, Messages])
+class KalisiDb extends _$KalisiDb {
+  KalisiDb() : super(_open());
+
+  @override
+  int get schemaVersion => 1;
+
+  // ---- Personas ----
+  Future<List<Persona>> allPersonas() => select(personas).get();
+  Future<Persona?> activePersona() =>
+      (select(personas)..where((t) => t.active.equals(true)))
+          .getSingleOrNull();
+  Future<void> upsertPersona(PersonasCompanion p) =>
+      into(personas).insertOnConflictUpdate(p);
+  Future<void> setActivePersona(String id) async {
+    await (update(personas)).write(const PersonasCompanion(active: Value(false)));
+    await (update(personas)..where((t) => t.id.equals(id)))
+        .write(const PersonasCompanion(active: Value(true)));
+  }
+
+  // ---- Contacts ----
+  Stream<List<Contact>> watchContacts(String personaId) =>
+      (select(contacts)..where((t) => t.personaId.equals(personaId))).watch();
+  Future<List<Contact>> contactsFor(String personaId) =>
+      (select(contacts)..where((t) => t.personaId.equals(personaId))).get();
+  Future<Contact?> contactById(String id) =>
+      (select(contacts)..where((t) => t.id.equals(id))).getSingleOrNull();
+  Future<Contact?> contactByKalId(String personaId, String kalId) =>
+      (select(contacts)
+            ..where((t) => t.personaId.equals(personaId) & t.kalId.equals(kalId)))
+          .getSingleOrNull();
+  Future<void> upsertContact(ContactsCompanion c) =>
+      into(contacts).insertOnConflictUpdate(c);
+  Future<void> deleteContact(String id) async {
+    await (delete(messages)..where((t) => t.contactId.equals(id))).go();
+    await (delete(contacts)..where((t) => t.id.equals(id))).go();
+  }
+
+  // ---- Messages ----
+  Stream<List<Message>> watchMessages(String contactId) =>
+      (select(messages)
+            ..where((t) => t.contactId.equals(contactId))
+            ..orderBy([(t) => OrderingTerm.asc(t.ts)]))
+          .watch();
+  Future<void> insertMessage(MessagesCompanion m) =>
+      into(messages).insertOnConflictUpdate(m);
+  Future<void> updateMessageStatus(String id, String status) =>
+      (update(messages)..where((t) => t.id.equals(id)))
+          .write(MessagesCompanion(status: Value(status)));
+  Future<void> clearMessages(String contactId) =>
+      (delete(messages)..where((t) => t.contactId.equals(contactId))).go();
+  Future<Message?> lastMessage(String contactId) => (select(messages)
+        ..where((t) => t.contactId.equals(contactId))
+        ..orderBy([(t) => OrderingTerm.desc(t.ts)])
+        ..limit(1))
+      .getSingleOrNull();
+}
+
+LazyDatabase _open() {
+  return LazyDatabase(() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final file = File(p.join(dir.path, 'kalisi.sqlite'));
+    return NativeDatabase.createInBackground(file);
+  });
+}

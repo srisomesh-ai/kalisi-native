@@ -1,0 +1,46 @@
+name: kalisi
+description: Kalisi — Private messenger. No phone number.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # State management
+  flutter_riverpod: ^2.5.1
+  # Local database (SQLite)
+  drift: ^2.18.0
+  sqlite3_flutter_libs: ^0.5.24
+  path_provider: ^2.1.3
+  path: ^1.9.0
+  # Crypto (ECDH P-256, AES-GCM, SHA-256)
+  cryptography: ^2.7.0
+  # Networking
+  dio: ^5.4.3
+  # Secure storage for private keys
+  flutter_secure_storage: ^9.2.2
+  # Routing
+  go_router: ^14.1.4
+  # QR
+  qr_flutter: ^4.1.0
+  mobile_scanner: ^5.1.1
+  # Push notifications
+  firebase_core: ^2.31.0
+  firebase_messaging: ^14.9.0
+  flutter_local_notifications: ^17.1.2
+  # Utilities
+  intl: ^0.19.0
+  image_picker: ^1.1.1
+  shared_preferences: ^2.2.3
+  google_fonts: ^6.2.1
+
+dev_dependencies:
+  flutter_lints: ^3.0.0
+  drift_dev: ^2.18.0
+  build_runner: ^2.4.11
+
+flutter:
+  uses-material-design: true
