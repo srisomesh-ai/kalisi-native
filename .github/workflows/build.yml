@@ -22,7 +22,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-          flutter-version: '3.24.0'
+          flutter-version: '3.29.0'
           cache: true
 
       - name: Flutter version
@@ -34,22 +34,13 @@ jobs:
           GRADLE=android/app/build.gradle.kts
           if [ -f "$GRADLE" ]; then
             sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' "$GRADLE" || true
-            if grep -q "ndkVersion" "$GRADLE"; then
-              sed -i 's/ndkVersion = .*/ndkVersion = "26.3.11579264"/' "$GRADLE"
-            else
-              sed -i 's/    compileSdk = flutter.compileSdkVersion/    compileSdk = flutter.compileSdkVersion\n    ndkVersion = "26.3.11579264"/' "$GRADLE"
-            fi
           else
             GRADLE=android/app/build.gradle
             sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' "$GRADLE" || true
             sed -i 's/minSdk flutter.minSdkVersion/minSdk 23/' "$GRADLE" || true
           fi
-          # Apply known-good Android toolchain (Kotlin 1.9.24, AGP 8.3.0, Gradle 8.4)
-          [ -f android/settings.gradle.kts ] && cp android-overrides/settings.gradle.kts android/settings.gradle.kts || true
-          cp android-overrides/gradle-wrapper.properties android/gradle/wrapper/gradle-wrapper.properties || true
-          echo "--- settings ---"; grep -iE "kotlin|android.application" android/settings.gradle.kts || true
-          echo "--- wrapper ---"; grep distributionUrl android/gradle/wrapper/gradle-wrapper.properties || true
           echo "--- app gradle ---"; grep -nE "minSdk|compileSdk|ndkVersion" "$GRADLE" || true
+          echo "--- settings ---"; grep -iE "kotlin|android.application" android/settings.gradle.kts 2>/dev/null || true
 
       - name: Get dependencies
         run: flutter pub get
