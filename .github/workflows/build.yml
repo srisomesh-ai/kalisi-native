@@ -48,7 +48,13 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings || true
 
       - name: Build debug APK
-        run: flutter build apk --debug
+        run: |
+          set -o pipefail
+          flutter build apk --debug 2>&1 | tee build.log
+
+      - name: Show build errors on failure
+        if: failure()
+        run: tail -120 build.log 2>/dev/null || true
 
       - name: Verify APK exists
         run: |

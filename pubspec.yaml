@@ -20,19 +20,6 @@ dependencies:
   cryptography: ^2.7.0
   # Networking
   dio: ^5.4.3
-  # Secure storage for private keys
-  flutter_secure_storage: ^9.2.2
-  # Routing
-  go_router: ^14.1.4
-  # QR
-  qr_flutter: ^4.1.0
-  mobile_scanner: ^5.1.1
-  # (Push notifications added later — needs Firebase project setup)
-  flutter_local_notifications: ^17.1.2
-  # Utilities
-  intl: ^0.19.0
-  image_picker: ^1.1.1
-  shared_preferences: ^2.2.3
   google_fonts: ^6.2.1
 
 dev_dependencies:
