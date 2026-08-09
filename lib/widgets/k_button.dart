@@ -47,7 +47,7 @@ class KButton extends StatelessWidget {
               ? null
               : [
                   BoxShadow(
-                    color: KColors.ember.withValues(alpha: 0.35),
+                    color: KColors.ember.withOpacity(0.35),
                     blurRadius: 14,
                     offset: const Offset(0, 4),
                   )

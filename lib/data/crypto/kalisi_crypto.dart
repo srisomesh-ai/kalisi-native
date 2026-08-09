@@ -18,13 +18,13 @@ class KalisiCrypto {
   /// Generate a new identity keypair. Returns (privateJwk, publicJwk) as JSON strings.
   static Future<({String privateJwk, String publicJwk})> generateKeyPair() async {
     final kp = await _ecdh.newKeyPair();
-    final pub = await kp.extractPublicKey();
-    final priv = await kp.extractPrivateKeyBytes();
+    final keyData = await kp.extract();
+    final pub = keyData.publicKey;
 
     final pubJwk = _publicKeyToJwk(pub);
     final privJwk = {
       ...pubJwk,
-      'd': _b64u(priv),
+      'd': _b64u(keyData.d),
     };
     return (
       privateJwk: jsonEncode(privJwk),
@@ -39,21 +39,18 @@ class KalisiCrypto {
         'y': _b64u(pub.y),
       };
 
-  /// Rebuild a SimpleKeyPair from stored private JWK.
-  static Future<SimpleKeyPair> _keyPairFromJwk(String privateJwk) async {
+  /// Rebuild an EcKeyPair from stored private JWK.
+  static EcKeyPairData _keyPairFromJwk(String privateJwk) {
     final j = jsonDecode(privateJwk) as Map<String, dynamic>;
-    final d = _unb64u(j['d'] as String);
-    final x = _unb64u(j['x'] as String);
-    final y = _unb64u(j['y'] as String);
     return EcKeyPairData(
-      d: d,
-      x: x,
-      y: y,
+      d: _unb64u(j['d'] as String),
+      x: _unb64u(j['x'] as String),
+      y: _unb64u(j['y'] as String),
       type: KeyPairType.p256,
     );
   }
 
-  static Future<EcPublicKey> _publicFromJwk(String publicJwk) async {
+  static EcPublicKey _publicFromJwk(String publicJwk) {
     final j = jsonDecode(publicJwk) as Map<String, dynamic>;
     return EcPublicKey(
       x: _unb64u(j['x'] as String),
@@ -63,14 +60,14 @@ class KalisiCrypto {
   }
 
   /// Derive the shared AES-GCM key between my private key and their public key.
-  static Future<SecretKey> _sharedKey(String myPrivateJwk, String theirPublicJwk) async {
-    final myKp = await _keyPairFromJwk(myPrivateJwk);
-    final theirPub = await _publicFromJwk(theirPublicJwk);
+  static Future<SecretKey> _sharedKey(
+      String myPrivateJwk, String theirPublicJwk) async {
+    final myKp = _keyPairFromJwk(myPrivateJwk);
+    final theirPub = _publicFromJwk(theirPublicJwk);
     final shared = await _ecdh.sharedSecretKey(
       keyPair: myKp,
       remotePublicKey: theirPub,
     );
-    // Web derives an AES-GCM key directly from the ECDH bits; use the raw 32 bytes.
     final bytes = await shared.extractBytes();
     return SecretKey(bytes);
   }

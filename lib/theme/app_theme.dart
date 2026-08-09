@@ -40,8 +40,8 @@ class AppTheme {
       ),
       dividerColor: s.line,
       iconTheme: IconThemeData(color: s.muted),
-      splashColor: KColors.gold.withValues(alpha: 0.08),
-      highlightColor: KColors.gold.withValues(alpha: 0.05),
+      splashColor: KColors.gold.withOpacity(0.08),
+      highlightColor: KColors.gold.withOpacity(0.05),
     );
   }
 
