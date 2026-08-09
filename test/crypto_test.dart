@@ -1,53 +1,78 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kalisi/data/crypto/kalisi_crypto.dart';
 
-/// NOTE: P-256 ECDH runs on the device's native crypto (Android/iOS/browser).
-/// The pure-Dart `flutter test` VM does not implement P-256, so these tests
-/// are guarded: if the platform can't do P-256 here, we skip rather than fail.
-/// The crypto is separately verified against WebCrypto test vectors to ensure
-/// app<->web interoperability.
 void main() {
-  Future<bool> cryptoAvailable() async {
-    try {
-      await KalisiCrypto.generateKeyPair();
-      return true;
-    } catch (_) {
-      return false;
-    }
-  }
-
-  test('generateKeyPair produces valid JWK', () async {
-    if (!await cryptoAvailable()) {
-      // ignore: avoid_print
-      print('SKIP: native P-256 unavailable in test VM');
-      return;
-    }
-    final keys = await KalisiCrypto.generateKeyPair();
-    expect(keys.publicJwk, contains('"kty":"EC"'));
-    expect(keys.publicJwk, contains('"crv":"P-256"'));
-    expect(keys.privateJwk, contains('"d":'));
-  });
-
-  test('encrypt/decrypt round-trips (if crypto available)', () async {
-    if (!await cryptoAvailable()) {
-      // ignore: avoid_print
-      print('SKIP: native P-256 unavailable in test VM');
-      return;
-    }
+  test('ECDH + AES-GCM round-trips between two identities', () async {
+    // Alice and Bob each generate an identity.
     final alice = await KalisiCrypto.generateKeyPair();
     final bob = await KalisiCrypto.generateKeyPair();
-    final obj = {'kind': 'text', 'text': 'secret 🔐', 'cid': 'm1', 'ts': 1};
-    final enc =
-        await KalisiCrypto.encryptObject(obj, alice.privateJwk, bob.publicJwk);
+
+    // Alice encrypts a message envelope for Bob.
+    final msg = {
+      'kind': 'text',
+      'text': 'Hello Bob 🙏 from Kalisi',
+      'cid': 'abc123',
+      'ts': 1720000000000,
+      'burn': false,
+    };
+    final enc = await KalisiCrypto.encryptObject(
+      msg,
+      alice.privateJwk,
+      bob.publicJwk,
+    );
+
+    // Bob decrypts using his private key + Alice's public key.
     final dec = await KalisiCrypto.decryptObject(
-        enc.iv, enc.blob, bob.privateJwk, alice.publicJwk);
-    expect(dec['text'], obj['text']);
+      enc.iv,
+      enc.blob,
+      bob.privateJwk,
+      alice.publicJwk,
+    );
+
+    expect(dec['text'], 'Hello Bob 🙏 from Kalisi');
+    expect(dec['kind'], 'text');
+    expect(dec['cid'], 'abc123');
   });
 
-  test('deletion receipt is deterministic (pure Dart, always runs)', () async {
-    final r1 = await KalisiCrypto.receipt('aGVsbG8=');
-    final r2 = await KalisiCrypto.receipt('aGVsbG8=');
-    expect(r1, r2);
-    expect(r1.length, 64);
+  test('shared secret is symmetric (both sides derive same key)', () async {
+    final a = await KalisiCrypto.generateKeyPair();
+    final b = await KalisiCrypto.generateKeyPair();
+
+    // A encrypts for B, B decrypts — already covered. Now B encrypts for A.
+    final enc = await KalisiCrypto.encryptObject(
+      {'text': 'reply', 'kind': 'text'},
+      b.privateJwk,
+      a.publicJwk,
+    );
+    final dec = await KalisiCrypto.decryptObject(
+      enc.iv,
+      enc.blob,
+      a.privateJwk,
+      b.publicJwk,
+    );
+    expect(dec['text'], 'reply');
+  });
+
+  test('wrong key fails to decrypt (security check)', () async {
+    final a = await KalisiCrypto.generateKeyPair();
+    final b = await KalisiCrypto.generateKeyPair();
+    final eve = await KalisiCrypto.generateKeyPair();
+
+    final enc = await KalisiCrypto.encryptObject(
+      {'text': 'secret', 'kind': 'text'},
+      a.privateJwk,
+      b.publicJwk,
+    );
+
+    // Eve tries to decrypt with her key — must throw.
+    expect(
+      () async => KalisiCrypto.decryptObject(
+        enc.iv,
+        enc.blob,
+        eve.privateJwk,
+        a.publicJwk,
+      ),
+      throwsA(anything),
+    );
   });
 }

@@ -63,8 +63,8 @@ class ApiClient {
         'pubkey': jsonDecode(pubkey),
       });
 
-  Future<Map<String, dynamic>> lookup(String username) =>
-      call('lookup', {'username': username});
+  Future<Map<String, dynamic>> lookup(String handle) =>
+      call('lookup', {'handle': handle});
 
   Future<Map<String, dynamic>> checkUsername(String username) =>
       call('check', {'username': username});
@@ -97,7 +97,8 @@ class ApiClient {
     required String token,
     required String targetKalId,
   }) =>
-      call('presence', {'kal_id': kalId, 'token': token, 'kal': targetKalId});
+      // Server reads last_seen of the kal_id in the body (the target).
+      call('presence', {'kal_id': targetKalId, 'token': token});
 
   Future<Map<String, dynamic>> reqSend({
     required String kalId,
