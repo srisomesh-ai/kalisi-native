@@ -31,12 +31,21 @@ jobs:
       - name: Generate Android platform files
         run: |
           flutter create --org app --project-name kalisi --platforms=android .
-          # Firebase + mobile_scanner need minSdk 23; bump it in the generated gradle.
-          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' android/app/build.gradle.kts 2>/dev/null || true
-          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle 2>/dev/null || true
-          sed -i 's/minSdk flutter.minSdkVersion/minSdk 23/' android/app/build.gradle 2>/dev/null || true
-          echo "--- android/app gradle (min sdk) ---"
-          (grep -n "minSdk" android/app/build.gradle.kts 2>/dev/null || grep -n "minSdk" android/app/build.gradle 2>/dev/null) || true
+          GRADLE=android/app/build.gradle.kts
+          if [ -f "$GRADLE" ]; then
+            sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' "$GRADLE" || true
+            # pin NDK if an ndkVersion line exists, else inject one under android {
+            if grep -q "ndkVersion" "$GRADLE"; then
+              sed -i 's/ndkVersion = .*/ndkVersion = "26.3.11579264"/' "$GRADLE"
+            else
+              sed -i 's/    compileSdk = flutter.compileSdkVersion/    compileSdk = flutter.compileSdkVersion\n    ndkVersion = "26.3.11579264"/' "$GRADLE"
+            fi
+          else
+            GRADLE=android/app/build.gradle
+            sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' "$GRADLE" || true
+            sed -i 's/minSdk flutter.minSdkVersion/minSdk 23/' "$GRADLE" || true
+          fi
+          echo "--- gradle config ---"; cat "$GRADLE" | grep -nE "minSdk|compileSdk|ndkVersion|targetSdk" || true
 
       - name: Get dependencies
         run: flutter pub get
