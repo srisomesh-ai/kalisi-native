@@ -30,8 +30,13 @@ jobs:
 
       - name: Generate Android platform files
         run: |
-          # create the android/ scaffolding without touching lib/ or pubspec
           flutter create --org app --project-name kalisi --platforms=android .
+          # Firebase + mobile_scanner need minSdk 23; bump it in the generated gradle.
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' android/app/build.gradle.kts 2>/dev/null || true
+          sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' android/app/build.gradle 2>/dev/null || true
+          sed -i 's/minSdk flutter.minSdkVersion/minSdk 23/' android/app/build.gradle 2>/dev/null || true
+          echo "--- android/app gradle (min sdk) ---"
+          (grep -n "minSdk" android/app/build.gradle.kts 2>/dev/null || grep -n "minSdk" android/app/build.gradle 2>/dev/null) || true
 
       - name: Get dependencies
         run: flutter pub get
@@ -43,7 +48,7 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings || true
 
       - name: Build debug APK
-        run: flutter build apk --debug
+        run: flutter build apk --debug --verbose 2>&1 | tail -80
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4

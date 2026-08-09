@@ -27,9 +27,7 @@ dependencies:
   # QR
   qr_flutter: ^4.1.0
   mobile_scanner: ^5.1.1
-  # Push notifications
-  firebase_core: ^2.31.0
-  firebase_messaging: ^14.9.0
+  # (Push notifications added later — needs Firebase project setup)
   flutter_local_notifications: ^17.1.2
   # Utilities
   intl: ^0.19.0
