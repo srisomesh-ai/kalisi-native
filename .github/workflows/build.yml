@@ -61,6 +61,14 @@ jobs:
           set -o pipefail
           flutter build apk --debug 2>&1 | tee build.log
 
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: warn
+
       - name: Show build errors on failure
         if: failure()
         run: tail -120 build.log 2>/dev/null || true
