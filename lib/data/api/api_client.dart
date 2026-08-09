@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 
 /// Talks to the existing Kalisi PHP relay API.
@@ -29,9 +30,17 @@ class ApiClient {
   ]) async {
     try {
       final res = await _dio.post(base, data: {'action': action, ...body});
-      final data = res.data;
-      final map = data is Map<String, dynamic>
-          ? data
+      var data = res.data;
+      // dio may hand back a String if the server's content-type isn't application/json.
+      if (data is String) {
+        try {
+          data = jsonDecode(data);
+        } catch (_) {
+          throw ApiException('bad_response', {'raw': data.toString()});
+        }
+      }
+      final map = data is Map
+          ? data.map((k, v) => MapEntry(k.toString(), v))
           : <String, dynamic>{'ok': false, 'error': 'bad_response'};
       if (map['ok'] == true) return map;
       throw ApiException(map['error']?.toString() ?? 'api_error', map);
@@ -45,9 +54,14 @@ class ApiClient {
   Future<Map<String, dynamic>> register({
     required String name,
     required String username,
-    required String pubkey,
+    required String pubkey, // JSON string of the public JWK
   }) =>
-      call('register', {'name': name, 'username': username, 'pubkey': pubkey});
+      call('register', {
+        'name': name,
+        'username': username,
+        // Server expects pubkey as an OBJECT (is_array check), so decode the JWK string.
+        'pubkey': jsonDecode(pubkey),
+      });
 
   Future<Map<String, dynamic>> lookup(String username) =>
       call('lookup', {'username': username});

@@ -51,14 +51,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         _busy = false;
         _error = switch (e.error) {
           'username_taken' => '@$username is already taken',
-          'network_error' => 'Server unreachable — check your connection',
+          'bad_username' => 'Username must be 3–20 letters, numbers or _',
+          'bad_input' => 'Invalid details — please check and retry',
+          'network_error' => 'Cannot reach the server. Check your internet.',
           _ => 'Could not create account (${e.error})',
         };
       });
-    } catch (_) {
+    } catch (e) {
       setState(() {
         _busy = false;
-        _error = 'Something went wrong. Try again.';
+        _error = 'Something went wrong: $e';
       });
     }
   }
