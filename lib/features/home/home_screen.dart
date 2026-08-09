@@ -15,6 +15,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _tab = 0;
 
   @override
+  void initState() {
+    super.initState();
+    // begin polling for incoming messages in the background
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(pollerProvider).start();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final s = KScheme.of(context);
     final pages = const [

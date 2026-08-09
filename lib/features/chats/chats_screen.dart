@@ -6,6 +6,7 @@ import '../../app/providers.dart';
 import '../../data/db/database.dart';
 import '../../util/ids.dart';
 import '../../widgets/avatar.dart';
+import 'chat_view.dart';
 
 /// Streams the active persona's contacts and shows them as a chat list.
 final contactsStreamProvider = StreamProvider<List<Contact>>((ref) async* {
@@ -133,7 +134,9 @@ class _ChatRow extends ConsumerWidget {
     final s = KScheme.of(context);
     return InkWell(
       onTap: () {
-        // Chat view wired in the next screen.
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => ChatView(contact: contact)),
+        );
       },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),

@@ -77,45 +77,45 @@ class KalisiCrypto {
     return SecretKey(bytes);
   }
 
-  /// Encrypt plaintext for a recipient. Returns {iv, data} base64 strings.
-  static Future<({String iv, String data})> encrypt(
-    String plaintext,
+  /// Encrypt a message object for a recipient — matches the web app exactly.
+  /// The web does: AES-GCM.encrypt(JSON.stringify(obj)) and base64s the result,
+  /// where WebCrypto APPENDS the 16-byte auth tag to the ciphertext.
+  /// Returns {iv, blob} base64 strings (field names match the server contract).
+  static Future<({String iv, String blob})> encryptObject(
+    Map<String, dynamic> obj,
     String myPrivateJwk,
     String theirPublicJwk,
   ) async {
     final key = await _sharedKey(myPrivateJwk, theirPublicJwk);
     final nonce = _aes.newNonce();
     final box = await _aes.encrypt(
-      utf8.encode(plaintext),
+      utf8.encode(jsonEncode(obj)),
       secretKey: key,
       nonce: nonce,
     );
-    // Web stores ciphertext+tag together; concatenate as cipherText||mac.
-    final combined = Uint8List.fromList([...box.cipherText, ...box.mac.bytes]);
-    return (
-      iv: _b64(Uint8List.fromList(nonce)),
-      data: _b64(combined),
-    );
+    // WebCrypto layout: ciphertext || tag  (tag is 16 bytes at the end).
+    final blob = Uint8List.fromList([...box.cipherText, ...box.mac.bytes]);
+    return (iv: _b64(Uint8List.fromList(nonce)), blob: _b64(blob));
   }
 
-  /// Decrypt a payload from a sender.
-  static Future<String> decrypt(
+  /// Decrypt a message from a sender — matches the web (blob = ciphertext||tag).
+  /// Returns the decoded JSON object.
+  static Future<Map<String, dynamic>> decryptObject(
     String ivB64,
-    String dataB64,
+    String blobB64,
     String myPrivateJwk,
     String theirPublicJwk,
   ) async {
     final key = await _sharedKey(myPrivateJwk, theirPublicJwk);
     final nonce = _unb64(ivB64);
-    final combined = _unb64(dataB64);
-    // Last 16 bytes = GCM tag.
-    final cipherText = combined.sublist(0, combined.length - 16);
-    final mac = Mac(combined.sublist(combined.length - 16));
+    final blob = _unb64(blobB64);
+    final cipherText = blob.sublist(0, blob.length - 16);
+    final mac = Mac(blob.sublist(blob.length - 16));
     final clear = await _aes.decrypt(
       SecretBox(cipherText, nonce: nonce, mac: mac),
       secretKey: key,
     );
-    return utf8.decode(clear);
+    return jsonDecode(utf8.decode(clear)) as Map<String, dynamic>;
   }
 
   /// SHA-256 deletion receipt of the ciphertext (hex).

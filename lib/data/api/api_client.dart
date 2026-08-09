@@ -73,17 +73,17 @@ class ApiClient {
     required String kalId,
     required String token,
     required String to,
-    required String cid,
+    required String clientId,
     required String iv,
-    required String payload,
+    required String blob,
   }) =>
       call('send', {
         'kal_id': kalId,
         'token': token,
         'to': to,
-        'cid': cid,
+        'client_id': clientId,
         'iv': iv,
-        'payload': payload,
+        'blob': blob,
       });
 
   Future<Map<String, dynamic>> fetch({
@@ -97,7 +97,7 @@ class ApiClient {
     required String token,
     required String targetKalId,
   }) =>
-      call('presence', {'kal_id': kalId, 'token': token, 'target': targetKalId});
+      call('presence', {'kal_id': kalId, 'token': token, 'kal': targetKalId});
 
   Future<Map<String, dynamic>> reqSend({
     required String kalId,
