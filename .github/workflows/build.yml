@@ -48,10 +48,18 @@ jobs:
         run: flutter analyze --no-fatal-infos --no-fatal-warnings || true
 
       - name: Build debug APK
-        run: flutter build apk --debug --verbose 2>&1 | tail -80
+        run: flutter build apk --debug
+
+      - name: Verify APK exists
+        run: |
+          echo "--- looking for APK ---"
+          find build -name "*.apk" -type f 2>/dev/null || echo "NO APK FOUND"
+          ls -la build/app/outputs/flutter-apk/ 2>/dev/null || echo "flutter-apk dir missing"
 
       - name: Upload debug APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: kalisi-native-debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
