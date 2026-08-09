@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
+import 'package:cryptography/dart.dart';
 
 /// End-to-end crypto for Kalisi — matches the web app's scheme so messages
 /// sent between the app and web interoperate.
@@ -12,8 +13,12 @@ import 'package:cryptography/cryptography.dart';
 ///  - Payload: AES-GCM encrypt(plaintext) with a random 12-byte IV.
 ///  - Deletion receipt: SHA-256 of the ciphertext.
 class KalisiCrypto {
-  static final _ecdh = Ecdh.p256(length: 32);
-  static final _aes = AesGcm.with256bits();
+  // Use the pure-Dart implementations explicitly. The default Cryptography
+  // backend throws UnimplementedError for ECDH P-256 / AES-GCM unless a
+  // platform backend is registered; DartCryptography implements them directly.
+  static final _ecdh = DartEcdh.p256();
+  static final _aes = DartAesGcm(secretKeyLength: 32);
+  static final _sha256 = DartSha256();
 
   /// Generate a new identity keypair. Returns (privateJwk, publicJwk) as JSON strings.
   static Future<({String privateJwk, String publicJwk})> generateKeyPair() async {
@@ -115,7 +120,7 @@ class KalisiCrypto {
 
   /// SHA-256 deletion receipt of the ciphertext (hex).
   static Future<String> receipt(String dataB64) async {
-    final hash = await Sha256().hash(_unb64(dataB64));
+    final hash = await _sha256.hash(_unb64(dataB64));
     return hash.bytes
         .map((b) => b.toRadixString(16).padLeft(2, '0'))
         .join();
@@ -123,7 +128,7 @@ class KalisiCrypto {
 
   /// Short device-key fingerprint (for the Privacy screen).
   static Future<String> fingerprint(String publicJwk) async {
-    final hash = await Sha256().hash(utf8.encode(publicJwk));
+    final hash = await _sha256.hash(utf8.encode(publicJwk));
     final hex = hash.bytes
         .map((b) => b.toRadixString(16).padLeft(2, '0'))
         .join();
