@@ -59,7 +59,13 @@ jobs:
       - name: Build debug APK
         run: |
           set -o pipefail
-          flutter build apk --debug 2>&1 | tee build.log
+          if ! flutter build apk --debug 2>&1 | tee build.log; then
+            echo "BUILD FAILED — extracting error lines:"
+            grep -iE "error:|e: |exception|FAILURE:|What went wrong|Could not|A problem occurred|Execution failed|> Task .* FAILED" build.log | tail -25 | while IFS= read -r line; do
+              echo "::error::${line}"
+            done
+            exit 1
+          fi
 
       - name: Upload build log
         if: always()
