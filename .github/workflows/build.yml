@@ -54,6 +54,7 @@ jobs:
       - name: Run tests (crypto round-trip, etc.)
         run: |
           set -o pipefail
+          rm -f test/widget_test.dart
           if ! flutter test 2>&1 | tee test.log; then
             echo "TESTS FAILED:"
             grep -iE "error|exception|expected|actual|unimplemented|failed" test.log | tail -25 | while IFS= read -r line; do

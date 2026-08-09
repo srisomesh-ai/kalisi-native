@@ -18,8 +18,6 @@ dependencies:
   path: ^1.9.0
   # Crypto (ECDH P-256, AES-GCM, SHA-256)
   cryptography: ^2.7.0
-  # Native platform crypto (Android/iOS) so ECDH P-256 works on-device
-  cryptography_flutter: ^2.3.2
   # Networking
   dio: ^5.4.3
   google_fonts: ^6.2.1
