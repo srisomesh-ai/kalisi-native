@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cryptography_flutter/cryptography_flutter.dart';
 import 'theme/app_theme.dart';
 import 'theme/colors.dart';
 import 'app/providers.dart';
@@ -9,6 +10,8 @@ import 'features/home/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Use the platform's native crypto (fast, and provides P-256 ECDH on Android/iOS).
+  FlutterCryptography.enable();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   runApp(const ProviderScope(child: KalisiApp()));
 }

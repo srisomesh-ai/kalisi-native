@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:cryptography/cryptography.dart';
-import 'package:cryptography/dart.dart';
+
 
 /// End-to-end crypto for Kalisi — matches the web app's scheme so messages
 /// sent between the app and web interoperate.
@@ -16,8 +16,8 @@ class KalisiCrypto {
   // Use the pure-Dart implementations explicitly. The default Cryptography
   // backend throws UnimplementedError for ECDH P-256 / AES-GCM unless a
   // platform backend is registered; DartCryptography implements them directly.
-  static final _ecdh = DartEcdh.p256();
-  static final _aes = DartAesGcm(secretKeyLength: 32);
+  static final _ecdh = Ecdh.p256(length: 32);
+  static final _aes = AesGcm.with256bits();
   static final _sha256 = DartSha256();
 
   /// Generate a new identity keypair. Returns (privateJwk, publicJwk) as JSON strings.
