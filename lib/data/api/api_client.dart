@@ -147,4 +147,30 @@ class ApiClient {
         'token': token,
         'username': username,
       });
+
+  Future<Map<String, dynamic>> statusPost({
+    required String kalId,
+    required String token,
+    required String type, // text|photo|voice
+    required String payload,
+    bool allowShare = false,
+  }) =>
+      call('status_post', {
+        'kal_id': kalId,
+        'token': token,
+        'type': type,
+        'payload': payload,
+        'allow_share': allowShare,
+      });
+
+  Future<Map<String, dynamic>> statusFeed({
+    required String kalId,
+    required String token,
+    required List<String> contacts,
+  }) =>
+      call('status_feed', {
+        'kal_id': kalId,
+        'token': token,
+        'contacts': contacts,
+      });
 }

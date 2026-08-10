@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../theme/app_theme.dart';
 import '../../theme/colors.dart';
 import '../../app/providers.dart';
 import '../chats/chats_screen.dart';
+import '../connect/connect_screen.dart';
+import '../status/status_screen.dart';
+import '../privacy/privacy_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -28,9 +30,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final s = KScheme.of(context);
     final pages = const [
       ChatsScreen(),
-      _Placeholder(title: 'Status'),
-      _Placeholder(title: 'Connect'),
-      _Placeholder(title: 'Privacy'),
+      StatusScreen(),
+      ConnectScreen(),
+      PrivacyScreen(),
     ];
 
     return Scaffold(
@@ -118,19 +120,6 @@ class _NavItem extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _Placeholder extends StatelessWidget {
-  final String title;
-  const _Placeholder({required this.title});
-  @override
-  Widget build(BuildContext context) {
-    final s = KScheme.of(context);
-    return Center(
-      child: Text('$title — coming next',
-          style: TextStyle(color: s.muted, fontSize: 16)),
     );
   }
 }

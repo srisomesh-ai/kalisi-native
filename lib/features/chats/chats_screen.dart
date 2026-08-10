@@ -159,10 +159,29 @@ class _ChatRow extends ConsumerWidget {
                           fontSize: 16,
                           fontWeight: FontWeight.w600)),
                   const SizedBox(height: 3),
-                  Text('Tap to chat',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(color: s.muted, fontSize: 13.5)),
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final msgs = ref.watch(messagesProvider(contact.id));
+                      final preview = msgs.maybeWhen(
+                        data: (list) {
+                          if (list.isEmpty) return 'Tap to chat';
+                          final m = list.last;
+                          final who = m.fromMe == 'me' ? 'You: ' : '';
+                          final body = switch (m.kind) {
+                            'img' => '📷 Photo',
+                            'voice' => '🎙 Voice message',
+                            _ => m.body ?? '',
+                          };
+                          return '$who$body';
+                        },
+                        orElse: () => 'Tap to chat',
+                      );
+                      return Text(preview,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(color: s.muted, fontSize: 13.5));
+                    },
+                  ),
                 ],
               ),
             ),

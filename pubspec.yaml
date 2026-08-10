@@ -21,6 +21,8 @@ dependencies:
   # Networking
   dio: ^5.4.3
   google_fonts: ^6.2.1
+  # QR (for Connect screen)
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   flutter_test:

@@ -84,6 +84,13 @@ class KalisiDb extends _$KalisiDb {
         .write(const PersonasCompanion(active: Value(true)));
   }
 
+  /// Log out (delete) a persona and all its data.
+  Future<void> logoutPersona(String id) async {
+    await (delete(messages)..where((t) => t.personaId.equals(id))).go();
+    await (delete(contacts)..where((t) => t.personaId.equals(id))).go();
+    await (delete(personas)..where((t) => t.id.equals(id))).go();
+  }
+
   // ---- Contacts ----
   Stream<List<Contact>> watchContacts(String personaId) =>
       (select(contacts)..where((t) => t.personaId.equals(personaId))).watch();
