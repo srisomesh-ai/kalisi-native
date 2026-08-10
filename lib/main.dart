@@ -4,13 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'theme/app_theme.dart';
 import 'theme/colors.dart';
 import 'app/providers.dart';
+import 'data/push/push_service.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/home/home_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Use the platform's native crypto (fast, and provides P-256 ECDH on Android/iOS).
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  await PushService.init();
   runApp(const ProviderScope(child: KalisiApp()));
 }
 

@@ -34,21 +34,33 @@ jobs:
           GRADLE=android/app/build.gradle.kts
           if [ -f "$GRADLE" ]; then
             sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' "$GRADLE" || true
+            # Force the applicationId + namespace to com.messenger.app (Firebase package)
+            sed -i 's/applicationId = "[^"]*"/applicationId = "com.messenger.app"/' "$GRADLE" || true
+            sed -i 's/namespace = "[^"]*"/namespace = "com.messenger.app"/' "$GRADLE" || true
           else
             GRADLE=android/app/build.gradle
             sed -i 's/minSdkVersion flutter.minSdkVersion/minSdkVersion 23/' "$GRADLE" || true
             sed -i 's/minSdk flutter.minSdkVersion/minSdk 23/' "$GRADLE" || true
+            sed -i 's/applicationId "[^"]*"/applicationId "com.messenger.app"/' "$GRADLE" || true
           fi
-          echo "--- app gradle ---"; grep -nE "minSdk|compileSdk|ndkVersion" "$GRADLE" || true
+          echo "--- app gradle ---"; grep -nE "minSdk|compileSdk|ndkVersion|applicationId|namespace" "$GRADLE" || true
           echo "--- settings ---"; grep -iE "kotlin|android.application" android/settings.gradle.kts 2>/dev/null || true
-          # Add camera + microphone + internet permissions for media messages
+          # Add camera + microphone + internet + notification permissions
           MANIFEST=android/app/src/main/AndroidManifest.xml
           if [ -f "$MANIFEST" ] && ! grep -q "RECORD_AUDIO" "$MANIFEST"; then
-            sed -i 's#<manifest\(.*\)>#<manifest\1>\n    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.CAMERA"/>#' "$MANIFEST"
+            sed -i 's#<manifest\(.*\)>#<manifest\1>\n    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.CAMERA"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>#' "$MANIFEST"
           fi
           echo "--- manifest perms ---"; grep -E "uses-permission" "$MANIFEST" || true
           # Set the visible app name to "Kalisi"
           sed -i 's/android:label="kalisi"/android:label="Kalisi"/' "$MANIFEST" || true
+
+      - name: Wire Firebase (push notifications)
+        run: |
+          cp ci/google-services.json android/app/google-services.json
+          echo "google-services.json placed."
+          python3 ci/wire_firebase.py
+          echo "--- app plugins ---"; grep -nA6 "plugins {" android/app/build.gradle.kts | head -20 || true
+          echo "--- settings plugins ---"; grep -n "google-services" android/settings.gradle.kts || true
 
       - name: Set up signing (if keystore secret is present)
         env:

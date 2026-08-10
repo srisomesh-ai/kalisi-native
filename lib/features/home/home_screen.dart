@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/colors.dart';
 import '../../app/providers.dart';
+import '../../data/push/push_service.dart';
 import '../chats/chats_screen.dart';
 import '../connect/connect_screen.dart';
 import '../status/status_screen.dart';
@@ -22,6 +23,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // begin polling for incoming messages in the background
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(pollerProvider).start();
+      final me = ref.read(activePersonaProvider).valueOrNull;
+      if (me != null) {
+        PushService.registerToken(ref.read(apiProvider), me.kalId, me.token);
+      }
     });
   }
 
