@@ -42,6 +42,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     return Scaffold(
       body: SafeArea(bottom: false, child: pages[_tab]),
+      floatingActionButton: (_tab == 0)
+          ? Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: FloatingActionButton(
+                onPressed: () => setState(() => _tab = 2), // go to Connect
+                backgroundColor: KColors.teal,
+                foregroundColor: Colors.white,
+                elevation: 6,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(19)),
+                child: const Icon(Icons.edit_rounded, size: 24),
+              ),
+            )
+          : null,
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: s.panel,
@@ -101,26 +115,32 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = KScheme.of(context);
-    final color = active ? KColors.teal : s.faint;
     return Expanded(
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.only(top: 8, bottom: 10),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              AnimatedScale(
-                scale: active ? 1.1 : 1.0,
+              AnimatedContainer(
                 duration: const Duration(milliseconds: 180),
-                child: Icon(icon, color: color, size: 25),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 22, vertical: 5),
+                decoration: BoxDecoration(
+                  color: active ? KColors.tealSoft : Colors.transparent,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Icon(icon,
+                    color: active ? KColors.teal : s.muted, size: 23),
               ),
               const SizedBox(height: 5),
               Text(label,
                   style: TextStyle(
-                      color: color,
+                      color: active ? s.text : s.muted,
                       fontSize: 12.5,
-                      fontWeight: FontWeight.w600)),
+                      fontWeight:
+                          active ? FontWeight.w700 : FontWeight.w600)),
             ],
           ),
         ),
