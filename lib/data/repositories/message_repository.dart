@@ -156,8 +156,8 @@ class MessageRepository {
     if (contact?.publicJwk == null) return;
 
     final obj = <String, dynamic>{
-      'kind': 'reaction',
-      'target': message.id,
+      'kind': 'react',
+      'id': message.id,
       'emoji': emoji,
       'cid': newUuid(),
       'ts': nowMs(),
@@ -205,9 +205,8 @@ class MessageRepository {
         final cid = obj['cid']?.toString() ?? newUuid();
         final kind = obj['kind']?.toString() ?? 'text';
 
-        // Control messages (read receipts, burn acks, typing) are not chat bubbles.
-        // Apply their effect and skip storing them.
-        if (kind == 'read') {
+        // Control messages are not chat bubbles — apply effect and skip storing.
+        if (kind == 'read' || kind == 'seen') {
           final ids = (obj['ids'] as List?) ?? const [];
           for (final id in ids) {
             await _db.updateMessageStatus(id.toString(), 'read');
@@ -216,19 +215,28 @@ class MessageRepository {
         }
         if (kind == 'burned') {
           final bid = obj['id']?.toString();
-          if (bid != null) {
-            await _db.markBurned(bid);
+          if (bid != null) await _db.markBurned(bid);
+          continue;
+        }
+        if (kind == 'react' || kind == 'reaction') {
+          // web sends {kind:'react', id, emoji}; app earlier used 'target'
+          final targetId = (obj['id'] ?? obj['target'])?.toString();
+          final emoji = obj['emoji']?.toString();
+          if (targetId != null) {
+            await _db.setReaction(targetId, (emoji == null || emoji.isEmpty) ? null : emoji);
           }
           continue;
         }
-        if (kind == 'typing' || kind == 'delivered' || kind == 'reaction') {
-          if (kind == 'reaction') {
-            final targetId = obj['target']?.toString();
-            final emoji = obj['emoji']?.toString();
-            if (targetId != null) {
-              await _db.setReaction(targetId, emoji);
-            }
-          }
+        if (kind == 'delete') {
+          final did = obj['id']?.toString();
+          if (did != null) await _db.deleteMessageById(did);
+          continue;
+        }
+        if (kind == 'typing' || kind == 'delivered' || kind == 'ctl') {
+          continue;
+        }
+        // Any non-content kind we don't recognise: skip (never show empty bubbles).
+        if (kind != 'text' && kind != 'img' && kind != 'voice') {
           continue;
         }
 
@@ -241,8 +249,8 @@ class MessageRepository {
         } else {
           body = obj['text']?.toString();
         }
-        // Guard: don't store a totally empty text bubble.
-        if ((kind == 'text') && (body == null || body.trim().isEmpty)) {
+        // Guard: never store an empty text/media bubble.
+        if (body == null || body.trim().isEmpty) {
           continue;
         }
         await _db.insertMessage(MessagesCompanion.insert(

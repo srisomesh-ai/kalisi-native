@@ -137,6 +137,10 @@ class KalisiDb extends _$KalisiDb {
           .write(MessagesCompanion(reactionMine: Value(emoji)));
   Future<void> clearMessages(String contactId) =>
       (delete(messages)..where((t) => t.contactId.equals(contactId))).go();
+
+  /// Delete a single message by id (used for delete-for-everyone control msg).
+  Future<void> deleteMessageById(String id) =>
+      (delete(messages)..where((t) => t.id.equals(id))).go();
   Future<Message?> lastMessage(String contactId) => (select(messages)
         ..where((t) => t.contactId.equals(contactId))
         ..orderBy([(t) => OrderingTerm.desc(t.ts)])
