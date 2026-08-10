@@ -47,6 +47,26 @@ jobs:
             sed -i 's#<manifest\(.*\)>#<manifest\1>\n    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.CAMERA"/>#' "$MANIFEST"
           fi
           echo "--- manifest perms ---"; grep -E "uses-permission" "$MANIFEST" || true
+          # Set the visible app name to "Kalisi"
+          sed -i 's/android:label="kalisi"/android:label="Kalisi"/' "$MANIFEST" || true
+
+      - name: Set up signing (if keystore secret is present)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "Keystore secret found — configuring release signing."
+            echo "$KEYSTORE_BASE64" | base64 -d > android/app/kalisi-release.jks
+            printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=kalisi-release.jks\n' \
+              "$KEYSTORE_PASSWORD" "$KEY_PASSWORD" "$KEY_ALIAS" > android/key.properties
+            python3 ci/wire_signing.py android/app/build.gradle.kts
+            echo "Release signing configured."
+          else
+            echo "No keystore secret — release build will be unsigned (testing only)."
+          fi
 
       - name: Get dependencies
         run: flutter pub get
@@ -105,3 +125,29 @@ jobs:
           name: kalisi-native-debug-apk
           path: build/app/outputs/flutter-apk/app-debug.apk
           if-no-files-found: error
+
+      - name: Build release APK + AAB (for Play Store)
+        run: |
+          set -o pipefail
+          echo "=== Release APK (for direct install / testing) ==="
+          flutter build apk --release 2>&1 | tee -a build.log || true
+          echo "=== Release AAB (for Play Store upload) ==="
+          flutter build appbundle --release 2>&1 | tee -a build.log || true
+          echo "--- release outputs ---"
+          find build -name "*.aab" -o -name "app-release.apk" 2>/dev/null || true
+
+      - name: Upload release APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kalisi-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: warn
+
+      - name: Upload release AAB (Play Store)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kalisi-release-aab
+          path: build/app/outputs/bundle/release/app-release.aab
+          if-no-files-found: warn
