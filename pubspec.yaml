@@ -25,7 +25,6 @@ dependencies:
   qr_flutter: ^4.1.0
   # Media
   image_picker: ^1.1.2
-  record: 5.0.5
   audioplayers: ^6.0.0
 
 dev_dependencies:
@@ -34,10 +33,6 @@ dev_dependencies:
   flutter_lints: ^3.0.0
   drift_dev: ^2.18.0
   build_runner: ^2.4.11
-
-dependency_overrides:
-  # record_linux 0.7.2 breaks Android builds (interface mismatch); pin a good one.
-  record_linux: 0.7.1
 
 flutter:
   uses-material-design: true

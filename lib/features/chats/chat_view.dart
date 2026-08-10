@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../../theme/colors.dart';
 import '../../app/providers.dart';
@@ -28,16 +27,12 @@ class ChatView extends ConsumerStatefulWidget {
 class _ChatViewState extends ConsumerState<ChatView> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
-  final _recorder = AudioRecorder();
   bool _sending = false;
-  bool _recording = false;
-  DateTime? _recStart;
 
   @override
   void dispose() {
     _input.dispose();
     _scroll.dispose();
-    _recorder.dispose();
     super.dispose();
   }
 
@@ -131,50 +126,6 @@ class _ChatViewState extends ConsumerState<ChatView> {
     }
   }
 
-  Future<void> _toggleRecording() async {
-    if (_recording) {
-      // stop + send
-      try {
-        final path = await _recorder.stop();
-        setState(() => _recording = false);
-        if (path == null) return;
-        setState(() => _sending = true);
-        final bytes = await File(path).readAsBytes();
-        final dataUrl = 'data:audio/m4a;base64,${base64Encode(bytes)}';
-        final me = ref.read(activePersonaProvider).valueOrNull;
-        if (me == null) return;
-        final dur = DateTime.now().difference(_recStart ?? DateTime.now()).inSeconds;
-        await ref.read(messageRepoProvider).sendMedia(
-              me: me,
-              contact: widget.contact,
-              kind: 'voice',
-              dataUrl: dataUrl,
-              localPath: path,
-              durationSec: dur,
-            );
-        _scrollToBottom();
-      } catch (_) {
-      } finally {
-        if (mounted) setState(() => _sending = false);
-      }
-    } else {
-      // start
-      if (await _recorder.hasPermission()) {
-        final dir = Directory.systemTemp.path;
-        final p = '$dir/kalisi_${nowMs()}.m4a';
-        await _recorder.start(const RecordConfig(), path: p);
-        _recStart = DateTime.now();
-        setState(() => _recording = true);
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Microphone permission needed')),
-          );
-        }
-      }
-    }
-  }
-
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
@@ -260,11 +211,9 @@ class _ChatViewState extends ConsumerState<ChatView> {
           _Composer(
             controller: _input,
             sending: _sending,
-            recording: _recording,
             onSend: _send,
             onPhoto: _sendPhoto,
             onCamera: _pickCamera,
-            onVoice: _toggleRecording,
           ),
         ],
       ),
@@ -451,19 +400,15 @@ class _VoiceContentState extends State<_VoiceContent> {
 class _Composer extends StatefulWidget {
   final TextEditingController controller;
   final bool sending;
-  final bool recording;
   final VoidCallback onSend;
   final VoidCallback onPhoto;
   final VoidCallback onCamera;
-  final VoidCallback onVoice;
   const _Composer({
     required this.controller,
     required this.sending,
-    required this.recording,
     required this.onSend,
     required this.onPhoto,
     required this.onCamera,
-    required this.onVoice,
   });
 
   @override
@@ -471,25 +416,6 @@ class _Composer extends StatefulWidget {
 }
 
 class _ComposerState extends State<_Composer> {
-  bool _hasText = false;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.controller.addListener(_onChange);
-  }
-
-  @override
-  void dispose() {
-    widget.controller.removeListener(_onChange);
-    super.dispose();
-  }
-
-  void _onChange() {
-    final has = widget.controller.text.trim().isNotEmpty;
-    if (has != _hasText) setState(() => _hasText = has);
-  }
-
   void _showAttach(BuildContext context) {
     final s = KScheme.of(context);
     showModalBottomSheet(
@@ -546,59 +472,38 @@ class _ComposerState extends State<_Composer> {
         ),
         child: Row(
           children: [
-            if (!widget.recording)
-              IconButton(
-                onPressed: () => _showAttach(context),
-                icon: Icon(Icons.add_circle_outline_rounded,
-                    color: s.muted, size: 26),
-              ),
+            IconButton(
+              onPressed: () => _showAttach(context),
+              icon: Icon(Icons.add_circle_outline_rounded,
+                  color: s.muted, size: 26),
+            ),
             Expanded(
-              child: widget.recording
-                  ? Container(
-                      height: 48,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: s.panel,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: KColors.ember),
-                      ),
-                      child: Row(
-                        children: [
-                          const _RecDot(),
-                          const SizedBox(width: 10),
-                          Text('Recording… tap to send',
-                              style: TextStyle(color: s.text, fontSize: 14)),
-                        ],
-                      ),
-                    )
-                  : Container(
-                      decoration: BoxDecoration(
-                        color: s.panel,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: s.line),
-                      ),
-                      child: TextField(
-                        controller: widget.controller,
-                        style: TextStyle(color: s.text, fontSize: 15.5),
-                        minLines: 1,
-                        maxLines: 5,
-                        textCapitalization: TextCapitalization.sentences,
-                        decoration: InputDecoration(
-                          hintText: 'Message',
-                          hintStyle: TextStyle(color: s.faint),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 18, vertical: 12),
-                        ),
-                        onSubmitted: (_) => widget.onSend(),
-                      ),
-                    ),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: s.panel,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: s.line),
+                ),
+                child: TextField(
+                  controller: widget.controller,
+                  style: TextStyle(color: s.text, fontSize: 15.5),
+                  minLines: 1,
+                  maxLines: 5,
+                  textCapitalization: TextCapitalization.sentences,
+                  decoration: InputDecoration(
+                    hintText: 'Message',
+                    hintStyle: TextStyle(color: s.faint),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 18, vertical: 12),
+                  ),
+                  onSubmitted: (_) => widget.onSend(),
+                ),
+              ),
             ),
             const SizedBox(width: 8),
             GestureDetector(
-              onTap: widget.sending
-                  ? null
-                  : (_hasText ? widget.onSend : widget.onVoice),
+              onTap: widget.sending ? null : widget.onSend,
               child: Container(
                 width: 48,
                 height: 48,
@@ -620,51 +525,11 @@ class _ComposerState extends State<_Composer> {
                         child: CircularProgressIndicator(
                             strokeWidth: 2.2, color: Colors.white),
                       )
-                    : Icon(
-                        widget.recording
-                            ? Icons.send_rounded
-                            : (_hasText ? Icons.send_rounded : Icons.mic_rounded),
-                        color: Colors.white,
-                        size: 22),
+                    : const Icon(Icons.send_rounded,
+                        color: Colors.white, size: 22),
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Pulsing red dot shown while recording a voice message.
-class _RecDot extends StatefulWidget {
-  const _RecDot();
-  @override
-  State<_RecDot> createState() => _RecDotState();
-}
-
-class _RecDotState extends State<_RecDot>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 700),
-  )..repeat(reverse: true);
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: Tween(begin: 0.3, end: 1.0).animate(_c),
-      child: Container(
-        width: 12,
-        height: 12,
-        decoration: const BoxDecoration(
-          color: KColors.ember,
-          shape: BoxShape.circle,
         ),
       ),
     );
