@@ -174,6 +174,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
       }
     }
   }
+
+  void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
         _scroll.animateTo(
