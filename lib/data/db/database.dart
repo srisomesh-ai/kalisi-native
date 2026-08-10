@@ -34,6 +34,9 @@ class Contacts extends Table {
   BoolColumn get blocked => boolean().withDefault(const Constant(false))();
   IntColumn get timer => integer().withDefault(const Constant(0))(); // disappearing seconds
   IntColumn get lastSeen => integer().withDefault(const Constant(0))();
+  TextColumn get mood => text().nullable()();
+  /// True while a sent friend request has not been accepted yet.
+  BoolColumn get pending => boolean().withDefault(const Constant(false))();
   IntColumn get createdAt => integer()();
 
   @override
@@ -69,7 +72,18 @@ class KalisiDb extends _$KalisiDb {
   KalisiDb.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          if (from < 2) {
+            await m.addColumn(contacts, contacts.mood);
+            await m.addColumn(contacts, contacts.pending);
+          }
+        },
+      );
 
   // ---- Personas ----
   Future<List<Persona>> allPersonas() => select(personas).get();

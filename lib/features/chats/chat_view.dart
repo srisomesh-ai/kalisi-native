@@ -146,11 +146,15 @@ class _ChatViewState extends ConsumerState<ChatView> {
     ref.listen(messagesProvider(widget.contact.id), (_, __) => _scrollToBottom());
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
+      backgroundColor: s.chatBg,
       appBar: AppBar(
         titleSpacing: 0,
-        backgroundColor: KColors.teal,
-        foregroundColor: Colors.white,
-        iconTheme: const IconThemeData(color: Colors.white),
+        backgroundColor: s.panel,
+        surfaceTintColor: s.panel,
+        foregroundColor: s.text,
+        elevation: 0,
+        shape: Border(bottom: BorderSide(color: s.line)),
         title: Row(
           children: [
             Avatar(
@@ -158,29 +162,22 @@ class _ChatViewState extends ConsumerState<ChatView> {
               label: widget.contact.name.isNotEmpty
                   ? widget.contact.name[0].toUpperCase()
                   : '?',
-              size: 40,
+              size: 42,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 11),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(widget.contact.name,
-                      style: const TextStyle(
-                          color: Colors.white,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          color: s.text,
                           fontSize: 16.5,
-                          fontWeight: FontWeight.w600)),
-                  Row(
-                    children: [
-                      const Icon(Icons.lock, size: 11, color: Color(0xFFBFE6EC)),
-                      const SizedBox(width: 3),
-                      Text('end-to-end encrypted',
-                          style: TextStyle(
-                              color: Colors.white.withOpacity(0.8),
-                              fontSize: 11.5)),
-                    ],
-                  ),
+                          fontWeight: FontWeight.w700)),
+                  _PresenceLine(contact: widget.contact),
                 ],
               ),
             ),
@@ -219,13 +216,19 @@ class _ChatViewState extends ConsumerState<ChatView> {
               },
             ),
           ),
-          _Composer(
-            controller: _input,
-            sending: _sending,
-            onSend: _send,
-            onPhoto: _sendPhoto,
-            onCamera: _pickCamera,
-          ),
+          if (widget.contact.pending)
+            _PendingCard(
+                handle: widget.contact.username != null
+                    ? '@${widget.contact.username}'
+                    : widget.contact.name)
+          else
+            _Composer(
+              controller: _input,
+              sending: _sending,
+              onSend: _send,
+              onPhoto: _sendPhoto,
+              onCamera: _pickCamera,
+            ),
         ],
       ),
     );
@@ -691,6 +694,133 @@ class _ComposerState extends State<_Composer> {
                         color: Colors.white,
                         size: 23),
               ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Line under the contact's name: mood → typing → online → last seen.
+class _PresenceLine extends StatelessWidget {
+  final Contact contact;
+  const _PresenceLine({required this.contact});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = KScheme.of(context);
+
+    final mood = contact.mood;
+    if (mood != null && mood.trim().isNotEmpty) {
+      return Text(mood,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+              color: KColors.amberInk,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600));
+    }
+
+    final seen = contact.lastSeen;
+    if (seen > 0) {
+      final gap = nowMs() - seen;
+      if (gap < 60000) {
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: const BoxDecoration(
+                  color: KColors.green, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 5),
+            const Text('online',
+                style: TextStyle(
+                    color: KColors.green,
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w600)),
+          ],
+        );
+      }
+      return Text('last seen ${_since(gap)}',
+          style: TextStyle(
+              color: s.faint, fontSize: 12.5, fontWeight: FontWeight.w500));
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.lock, size: 11, color: s.faint),
+        const SizedBox(width: 3),
+        Text('end-to-end encrypted',
+            style: TextStyle(color: s.faint, fontSize: 12)),
+      ],
+    );
+  }
+
+  static String _since(int ms) {
+    final d = Duration(milliseconds: ms);
+    if (d.inMinutes < 60) return '${d.inMinutes} min ago';
+    if (d.inHours < 24) return '${d.inHours} h ago';
+    return '${d.inDays} d ago';
+  }
+}
+
+/// Shown instead of the composer while a contact request is still pending.
+class _PendingCard extends StatelessWidget {
+  final String handle;
+  const _PendingCard({required this.handle});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = KScheme.of(context);
+    return SafeArea(
+      top: false,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        decoration: BoxDecoration(
+          color: s.panel,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 6,
+              offset: const Offset(0, 1),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('⏳', style: TextStyle(fontSize: 24)),
+            const SizedBox(height: 6),
+            Text('Waiting for $handle to accept',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: s.text,
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(height: 4),
+            Text(
+                'You can message each other once your request is accepted.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: s.muted, fontSize: 12.5, height: 1.45)),
+            const SizedBox(height: 10),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 13, vertical: 5),
+              decoration: BoxDecoration(
+                color: KColors.amberBg,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text('Request pending',
+                  style: TextStyle(
+                      color: KColors.amberInk,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700)),
             ),
           ],
         ),

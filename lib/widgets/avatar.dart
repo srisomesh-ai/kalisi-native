@@ -7,7 +7,7 @@ class Avatar extends StatelessWidget {
   final String label;
   final double size;
   final bool ring;          // amber ring (unseen status)
-  final bool ringSeen;      // grey ring (already viewed)
+  final bool ringSeen;      // grey ring (seen status)
 
   const Avatar({
     super.key,
@@ -50,18 +50,15 @@ class Avatar extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         gradient: ring
-            ? const LinearGradient(colors: [KColors.amber, Color(0xFFFFD79A)])
+            ? const LinearGradient(
+                colors: [KColors.amber, Color(0xFFFFD79A)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
             : null,
         color: ringSeen ? const Color(0x66FFFFFF) : null,
       ),
-      child: Container(
-        padding: const EdgeInsets.all(1.5),
-        decoration: const BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white,
-        ),
-        child: inner,
-      ),
+      child: inner,
     );
   }
 }

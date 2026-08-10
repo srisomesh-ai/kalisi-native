@@ -17,7 +17,7 @@ final contactsStreamProvider = StreamProvider<List<Contact>>((ref) async* {
   yield* ref.watch(dbProvider).watchContacts(persona.id);
 });
 
-/// Which filter chip is active.
+/// Which filter chip is active: 0=All 1=Unread 2=Favourites 3=Groups
 final chatFilterProvider = StateProvider<int>((ref) => 0);
 final chatSearchProvider = StateProvider<String>((ref) => '');
 
@@ -33,9 +33,9 @@ class ChatsScreen extends ConsumerWidget {
 
     return Column(
       children: [
-        // ---- top bar: brand + small tools (WhatsApp layout) ----
+        // ---- top bar: brand + small icons ----
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 10, 10, 8),
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
           child: Row(
             children: [
               Text('Kalisi',
@@ -46,16 +46,18 @@ class ChatsScreen extends ConsumerWidget {
                     letterSpacing: -0.6,
                   )),
               const Spacer(),
-              _Tool(icon: Icons.qr_code_rounded, onTap: () {}),
-              _Tool(
-                icon: Icons.light_mode_outlined,
+              _TopIcon(
+                icon: Icons.qr_code_rounded,
+                onTap: () {},
+              ),
+              _TopIcon(
+                icon: Icons.dark_mode_outlined,
                 onTap: () {
                   final m = ref.read(themeModeProvider);
                   ref.read(themeModeProvider.notifier).state =
                       m == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
                 },
               ),
-              _Tool(icon: Icons.more_vert_rounded, onTap: () {}),
             ],
           ),
         ),
@@ -81,7 +83,9 @@ class ChatsScreen extends ConsumerWidget {
                     decoration: InputDecoration(
                       hintText: 'Search',
                       hintStyle: TextStyle(
-                          color: s.faint, fontSize: 15, fontWeight: FontWeight.w500),
+                          color: s.faint,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500),
                       border: InputBorder.none,
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(vertical: 13),
@@ -94,20 +98,29 @@ class ChatsScreen extends ConsumerWidget {
         ),
 
         // ---- filter chips ----
-        contacts.maybeWhen(
-          data: (list) => _Chips(
-            all: list.length,
-            unread: 0,
-            groups: 0,
-            selected: filter,
-            onSelect: (i) => ref.read(chatFilterProvider.notifier).state = i,
-          ),
-          orElse: () => _Chips(
-            all: 0,
-            unread: 0,
-            groups: 0,
-            selected: filter,
-            onSelect: (i) => ref.read(chatFilterProvider.notifier).state = i,
+        SizedBox(
+          height: 54,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+            children: [
+              _Chip(
+                  label: 'All',
+                  on: filter == 0,
+                  onTap: () => ref.read(chatFilterProvider.notifier).state = 0),
+              _Chip(
+                  label: 'Unread',
+                  on: filter == 1,
+                  onTap: () => ref.read(chatFilterProvider.notifier).state = 1),
+              _Chip(
+                  label: 'Favourites',
+                  on: filter == 2,
+                  onTap: () => ref.read(chatFilterProvider.notifier).state = 2),
+              _Chip(
+                  label: 'Groups',
+                  on: filter == 3,
+                  onTap: () => ref.read(chatFilterProvider.notifier).state = 3),
+            ],
           ),
         ),
 
@@ -116,20 +129,21 @@ class ChatsScreen extends ConsumerWidget {
           child: contacts.when(
             loading: () =>
                 const Center(child: CircularProgressIndicator(color: KColors.teal)),
-            error: (e, _) => Center(
-                child: Text('Could not load chats',
+            error: (_, __) =>
+                Center(child: Text('Could not load chats',
                     style: TextStyle(color: s.muted))),
             data: (list) {
-              final filtered = query.isEmpty
-                  ? list
-                  : list
-                      .where((c) => c.name.toLowerCase().contains(query))
-                      .toList();
-              if (filtered.isEmpty) return _Empty(searching: query.isNotEmpty);
+              var shown = list;
+              if (query.isNotEmpty) {
+                shown = shown
+                    .where((c) => c.name.toLowerCase().contains(query))
+                    .toList();
+              }
+              if (shown.isEmpty) return _Empty(hasAny: list.isNotEmpty);
               return ListView.builder(
-                padding: const EdgeInsets.only(top: 4, bottom: 90),
-                itemCount: filtered.length,
-                itemBuilder: (_, i) => _ChatRow(contact: filtered[i]),
+                padding: const EdgeInsets.only(top: 2, bottom: 90),
+                itemCount: shown.length,
+                itemBuilder: (_, i) => _ChatRow(contact: shown[i]),
               );
             },
           ),
@@ -139,99 +153,51 @@ class ChatsScreen extends ConsumerWidget {
   }
 }
 
-class _Tool extends StatelessWidget {
+class _TopIcon extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
-  const _Tool({required this.icon, required this.onTap});
+  const _TopIcon({required this.icon, required this.onTap});
   @override
   Widget build(BuildContext context) {
     final s = KScheme.of(context);
     return IconButton(
       onPressed: onTap,
-      visualDensity: VisualDensity.compact,
-      icon: Icon(icon, color: s.text, size: 22),
-    );
-  }
-}
-
-class _Chips extends StatelessWidget {
-  final int all;
-  final int unread;
-  final int groups;
-  final int selected;
-  final ValueChanged<int> onSelect;
-  const _Chips({
-    required this.all,
-    required this.unread,
-    required this.groups,
-    required this.selected,
-    required this.onSelect,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final items = [
-      ('All', null),
-      ('Unread', unread > 0 ? '$unread' : null),
-      ('Favourites', null),
-      ('Groups', groups > 0 ? '$groups' : null),
-    ];
-    return SizedBox(
-      height: 54,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-        itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemBuilder: (_, i) => _Chip(
-          label: items[i].$1,
-          count: items[i].$2,
-          on: selected == i,
-          onTap: () => onSelect(i),
-        ),
-      ),
+      icon: Icon(icon, color: s.text, size: 23),
     );
   }
 }
 
 class _Chip extends StatelessWidget {
   final String label;
-  final String? count;
   final bool on;
   final VoidCallback onTap;
-  const _Chip(
-      {required this.label, this.count, required this.on, required this.onTap});
+  const _Chip({required this.label, required this.on, required this.onTap});
   @override
   Widget build(BuildContext context) {
     final s = KScheme.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 17),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: on ? KColors.tealSoft : Colors.transparent,
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Material(
+        color: on ? KColors.tealSoft : Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-              color: on ? Colors.transparent : s.line, width: 1.2),
-        ),
-        child: Row(
-          children: [
-            Text(label,
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 8),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                  color: on ? Colors.transparent : s.line, width: 1.2),
+            ),
+            alignment: Alignment.center,
+            child: Text(label,
                 style: TextStyle(
                   color: on ? KColors.teal : s.muted,
                   fontSize: 13.5,
                   fontWeight: on ? FontWeight.w700 : FontWeight.w600,
                 )),
-            if (count != null) ...[
-              const SizedBox(width: 4),
-              Text(count!,
-                  style: TextStyle(
-                      color: on ? KColors.teal : s.faint,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600)),
-            ],
-          ],
+          ),
         ),
       ),
     );
@@ -249,21 +215,19 @@ class _ChatRow extends ConsumerWidget {
 
     String preview = 'Tap to chat';
     String time = '';
-    bool mine = false;
-    String? status;
-
+    bool mineLast = false;
+    bool read = false;
     msgs.whenData((list) {
-      if (list.isNotEmpty) {
-        final m = list.last;
-        mine = m.fromMe == 'me';
-        status = m.status;
-        preview = switch (m.kind) {
-          'img' => '📷 Photo',
-          'voice' => '🎤 Voice message',
-          _ => (m.body ?? ''),
-        };
-        time = fmtTime(m.ts);
-      }
+      if (list.isEmpty) return;
+      final m = list.last;
+      mineLast = m.fromMe == 'me';
+      read = m.status == 'read';
+      preview = switch (m.kind) {
+        'img' => 'Photo',
+        'voice' => 'Voice message',
+        _ => (m.body ?? '').replaceAll('\n', ' '),
+      };
+      time = fmtTime(m.ts);
     });
 
     return InkWell(
@@ -286,37 +250,29 @@ class _ChatRow extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    contact.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: s.text,
-                      fontSize: 16.5,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: -0.1,
-                    ),
-                  ),
+                  Text(contact.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: s.text,
+                        fontSize: 16.5,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: -0.1,
+                      )),
                   const SizedBox(height: 3),
                   Row(
                     children: [
-                      if (mine) ...[
-                        Icon(
-                          status == 'read' || status == 'delivered'
-                              ? Icons.done_all_rounded
-                              : Icons.done_rounded,
-                          size: 15,
-                          color: status == 'read' ? KColors.teal : s.faint,
-                        ),
+                      if (mineLast) ...[
+                        Icon(Icons.done_all_rounded,
+                            size: 15,
+                            color: read ? KColors.teal : s.faint),
                         const SizedBox(width: 4),
                       ],
                       Expanded(
-                        child: Text(
-                          preview,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(color: s.muted, fontSize: 14.5),
-                        ),
+                        child: Text(preview,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: s.muted, fontSize: 14.5)),
                       ),
                     ],
                   ),
@@ -324,16 +280,9 @@ class _ChatRow extends ConsumerWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(time,
-                    style: TextStyle(
-                        color: s.faint,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500)),
-              ],
-            ),
+            Text(time,
+                style: TextStyle(
+                    color: s.faint, fontSize: 12, fontWeight: FontWeight.w500)),
           ],
         ),
       ),
@@ -342,8 +291,8 @@ class _ChatRow extends ConsumerWidget {
 }
 
 class _Empty extends StatelessWidget {
-  final bool searching;
-  const _Empty({required this.searching});
+  final bool hasAny;
+  const _Empty({required this.hasAny});
   @override
   Widget build(BuildContext context) {
     final s = KScheme.of(context);
@@ -353,20 +302,25 @@ class _Empty extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(searching ? Icons.search_off_rounded : Icons.forum_outlined,
-                size: 46, color: s.faint),
-            const SizedBox(height: 14),
-            Text(searching ? 'No chats found' : 'No chats yet',
+            Container(
+              width: 74,
+              height: 74,
+              decoration: const BoxDecoration(
+                  color: KColors.tealSoft, shape: BoxShape.circle),
+              child: const Icon(Icons.chat_bubble_outline_rounded,
+                  color: KColors.teal, size: 32),
+            ),
+            const SizedBox(height: 16),
+            Text(hasAny ? 'No matches' : 'No chats yet',
                 style: TextStyle(
-                    color: s.text, fontSize: 17, fontWeight: FontWeight.w700)),
+                    color: s.text, fontSize: 18, fontWeight: FontWeight.w700)),
             const SizedBox(height: 6),
             Text(
-              searching
-                  ? 'Try a different name.'
-                  : 'Go to Connect and add a friend by their @username.',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: s.muted, fontSize: 14),
-            ),
+                hasAny
+                    ? 'Try a different search.'
+                    : 'Go to Connect and add a friend by their @username.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: s.muted, fontSize: 14.5, height: 1.4)),
           ],
         ),
       ),
