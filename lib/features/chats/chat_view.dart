@@ -301,7 +301,7 @@ class _Bubble extends ConsumerWidget {
                                   : Icons.done,
                               size: 14,
                               color: message.status == 'read'
-                                  ? KColors.gold
+                                  ? KColors.teal
                                   : s.faint,
                             ),
                           ],
@@ -500,7 +500,7 @@ class _VoiceContentState extends State<_VoiceContent> {
             width: 36,
             height: 36,
             decoration: const BoxDecoration(
-              gradient: LinearGradient(colors: [KColors.gold, KColors.ember]),
+              color: KColors.teal,
               shape: BoxShape.circle,
             ),
             child: Icon(_playing ? Icons.stop : Icons.play_arrow,
@@ -568,7 +568,7 @@ class _ComposerState extends State<_Composer> {
             const SizedBox(height: 8),
             ListTile(
               leading: const Icon(Icons.photo_library_rounded,
-                  color: KColors.gold),
+                  color: KColors.teal),
               title: Text('Photo library', style: TextStyle(color: s.text)),
               onTap: () {
                 Navigator.pop(ctx);
@@ -577,7 +577,7 @@ class _ComposerState extends State<_Composer> {
             ),
             ListTile(
               leading:
-                  const Icon(Icons.camera_alt_rounded, color: KColors.gold),
+                  const Icon(Icons.camera_alt_rounded, color: KColors.teal),
               title: Text('Camera', style: TextStyle(color: s.text)),
               onTap: () {
                 Navigator.pop(ctx);
@@ -673,11 +673,11 @@ class _ComposerState extends State<_Composer> {
                 height: 50,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
-                      colors: [KColors.gold, KColors.ember]),
+                      colors: [KColors.teal, KColors.teal2]),
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: KColors.ember.withOpacity(0.42),
+                      color: KColors.teal.withOpacity(0.40),
                       blurRadius: 12,
                       offset: const Offset(0, 3),
                     ),

@@ -1,10 +1,37 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/colors.dart';
 import '../../app/providers.dart';
 import '../../util/ids.dart';
 
-/// Status feed for the active persona (their contacts' statuses).
+/// One status update from a contact (or me).
+class StatusItem {
+  final String id;
+  final String kalId;
+  final String name;
+  final String? username;
+  final String type;   // text | photo
+  final String payload;
+  final int ts;
+  final int views;
+  final bool seen;
+  StatusItem({
+    required this.id,
+    required this.kalId,
+    required this.name,
+    this.username,
+    required this.type,
+    required this.payload,
+    required this.ts,
+    this.views = 0,
+    this.seen = false,
+  });
+}
+
+final statusRefreshProvider = StateProvider<int>((ref) => 0);
+
 final statusFeedProvider = FutureProvider<List<StatusItem>>((ref) async {
   ref.watch(statusRefreshProvider);
   final me = await ref.watch(activePersonaProvider.future);
@@ -29,8 +56,8 @@ final statusFeedProvider = FutureProvider<List<StatusItem>>((ref) async {
         username: m['username']?.toString(),
         type: m['type']?.toString() ?? 'text',
         payload: m['payload']?.toString() ?? '',
-        views: int.tryParse('${m['views'] ?? 0}') ?? 0,
         ts: _ts(m['created_at']),
+        views: int.tryParse('${m['views'] ?? 0}') ?? 0,
       );
     }).toList();
   } catch (_) {
@@ -38,17 +65,13 @@ final statusFeedProvider = FutureProvider<List<StatusItem>>((ref) async {
   }
 });
 
-final statusRefreshProvider = StateProvider<int>((ref) => 0);
-/// Ids of statuses this device has opened.
-final statusSeenProvider = StateProvider<Set<String>>((ref) => <String>{});
-
 int _ts(dynamic v) {
   if (v is int) return v;
   return DateTime.tryParse('$v')?.millisecondsSinceEpoch ?? nowMs();
 }
 
 String _ago(int ts) {
-  final d = Duration(milliseconds: nowMs() - ts);
+  final d = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ts));
   if (d.inMinutes < 1) return 'just now';
   if (d.inMinutes < 60) return '${d.inMinutes} min ago';
   if (d.inHours < 24) return '${d.inHours} h ago';
@@ -62,124 +85,84 @@ class StatusScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final s = KScheme.of(context);
     final feed = ref.watch(statusFeedProvider);
-    final seen = ref.watch(statusSeenProvider);
 
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 12, 6),
-          child: Row(
-            children: [
-              Text('Status',
-                  style: TextStyle(
-                    color: KColors.teal,
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.6,
-                  )),
-              const Spacer(),
-              IconButton(
-                onPressed: () => ref.read(statusRefreshProvider.notifier).state++,
-                icon: Icon(Icons.refresh_rounded, color: s.text, size: 23),
-              ),
-            ],
+    return Container(
+      color: s.bg,
+      child: Column(
+        children: [
+          // top bar
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 8, 4),
+            child: Row(
+              children: [
+                const Text('Status',
+                    style: TextStyle(
+                        color: KColors.teal,
+                        fontSize: 26,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -0.6)),
+                const Spacer(),
+                IconButton(
+                  onPressed: () => _compose(context, ref),
+                  icon: Icon(Icons.photo_camera_outlined,
+                      color: s.text, size: 23),
+                ),
+              ],
+            ),
           ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-          child: Row(
-            children: [
-              Text('RECENT UPDATES',
-                  style: TextStyle(
-                      color: s.muted,
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: 0.4)),
-              const Spacer(),
-              feed.maybeWhen(
-                data: (l) {
-                  final n = l.where((e) => !seen.contains(e.id)).length;
-                  return Text(n > 0 ? '$n new' : '',
+          // section head
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 6, 16, 10),
+            child: Row(
+              children: [
+                Text('RECENT UPDATES',
+                    style: TextStyle(
+                        color: s.muted,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.4)),
+                const Spacer(),
+                feed.maybeWhen(
+                  data: (l) => Text(
+                      l.isEmpty ? '' : '${l.length} update${l.length == 1 ? '' : 's'}',
                       style: TextStyle(
-                          color: KColors.amberInk,
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700));
+                          color: s.faint,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600)),
+                  orElse: () => const SizedBox(),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: feed.when(
+              loading: () => const Center(
+                  child: CircularProgressIndicator(color: KColors.teal)),
+              error: (_, __) => Center(
+                  child: Text('Could not load status',
+                      style: TextStyle(color: s.muted))),
+              data: (items) => GridView.builder(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                gridDelegate:
+                    const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  mainAxisSpacing: 12,
+                  crossAxisSpacing: 12,
+                  childAspectRatio: 9 / 14,
+                ),
+                itemCount: items.length + 1,
+                itemBuilder: (_, i) {
+                  if (i == 0) {
+                    return _MyStatusCard(onTap: () => _compose(context, ref));
+                  }
+                  return _StatusCard(item: items[i - 1]);
                 },
-                orElse: () => const SizedBox.shrink(),
               ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: feed.when(
-            loading: () =>
-                const Center(child: CircularProgressIndicator(color: KColors.teal)),
-            error: (_, __) => Center(
-                child: Text('Could not load', style: TextStyle(color: s.muted))),
-            data: (items) => GridView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 90),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 9 / 14,
-              ),
-              itemCount: items.length + 1,
-              itemBuilder: (_, i) {
-                if (i == 0) return _MyStatusCard(onTap: () => _compose(context, ref));
-                final item = items[i - 1];
-                return _StatusCard(
-                  item: item,
-                  seen: seen.contains(item.id),
-                  onTap: () {
-                    ref.read(statusSeenProvider.notifier).state = {
-                      ...seen,
-                      item.id
-                    };
-                    _view(context, item);
-                  },
-                );
-              },
             ),
           ),
-        ),
-      ],
-    );
-  }
-
-  void _view(BuildContext context, StatusItem item) {
-    final pair = KColors.avatarPairFor(item.kalId);
-    Navigator.of(context).push(MaterialPageRoute(
-      fullscreenDialog: true,
-      builder: (_) => Scaffold(
-        backgroundColor: Colors.black,
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          title: Text(item.name,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-        ),
-        body: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: pair,
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-          ),
-          alignment: Alignment.center,
-          padding: const EdgeInsets.all(30),
-          child: Text(item.payload,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w600,
-                  height: 1.4)),
-        ),
+        ],
       ),
-    ));
+    );
   }
 
   void _compose(BuildContext context, WidgetRef ref) {
@@ -193,10 +176,11 @@ class StatusScreen extends ConsumerWidget {
           borderRadius: BorderRadius.vertical(top: Radius.circular(22))),
       builder: (ctx) => Padding(
         padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 20,
-            bottom: MediaQuery.of(ctx).viewInsets.bottom + 20),
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 22,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -205,7 +189,7 @@ class StatusScreen extends ConsumerWidget {
                 style: TextStyle(
                     color: s.text, fontSize: 19, fontWeight: FontWeight.w800)),
             const SizedBox(height: 4),
-            Text('Disappears after 24 hours.',
+            Text('Friends can see it for 24 hours.',
                 style: TextStyle(color: s.muted, fontSize: 13)),
             const SizedBox(height: 14),
             TextField(
@@ -246,6 +230,13 @@ class StatusScreen extends ConsumerWidget {
                             payload: text,
                           );
                       ref.read(statusRefreshProvider.notifier).state++;
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('Status shared'),
+                              duration: Duration(seconds: 2)),
+                        );
+                      }
                     } catch (_) {}
                   },
                   child: const Padding(
@@ -268,31 +259,37 @@ class StatusScreen extends ConsumerWidget {
   }
 }
 
+/// First tile — add your own status.
 class _MyStatusCard extends StatelessWidget {
   final VoidCallback onTap;
   const _MyStatusCard({required this.onTap});
+
   @override
   Widget build(BuildContext context) {
     final s = KScheme.of(context);
     return GestureDetector(
       onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: s.panel2,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: s.line, width: 2),
-        ),
+      child: DottedBorderBox(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Container(
               width: 52,
               height: 52,
-              decoration: const BoxDecoration(
-                  color: KColors.teal, shape: BoxShape.circle),
+              decoration: BoxDecoration(
+                color: KColors.teal,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: KColors.teal.withOpacity(0.35),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
               child: const Icon(Icons.add, color: Colors.white, size: 27),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 11),
             const Text('My status',
                 style: TextStyle(
                     color: KColors.teal,
@@ -312,40 +309,72 @@ class _MyStatusCard extends StatelessWidget {
   }
 }
 
+class DottedBorderBox extends StatelessWidget {
+  final Widget child;
+  const DottedBorderBox({super.key, required this.child});
+  @override
+  Widget build(BuildContext context) {
+    final s = KScheme.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: s.panel2,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFC6D4D2), width: 2),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// A friend's status as a tall portrait card.
 class _StatusCard extends StatelessWidget {
   final StatusItem item;
-  final bool seen;
-  final VoidCallback onTap;
-  const _StatusCard(
-      {required this.item, required this.seen, required this.onTap});
+  const _StatusCard({required this.item});
 
   @override
   Widget build(BuildContext context) {
-    final pair = KColors.avatarPairFor(item.kalId);
+    final g = KColors.avatarFor(item.kalId);
+    final isPhoto = item.type == 'photo' && item.payload.isNotEmpty;
+    Uint8List? bytes;
+    if (isPhoto) {
+      try {
+        final i = item.payload.indexOf(',');
+        bytes = base64Decode(i >= 0 ? item.payload.substring(i + 1) : item.payload);
+      } catch (_) {}
+    }
+    final fresh = DateTime.now()
+            .difference(DateTime.fromMillisecondsSinceEpoch(item.ts))
+            .inHours <
+        6;
+
     return GestureDetector(
-      onTap: onTap,
+      onTap: () => _open(context, bytes),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: Stack(
           fit: StackFit.expand,
           children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: pair,
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+            // background: photo or gradient
+            if (bytes != null)
+              Image.memory(bytes, fit: BoxFit.cover)
+            else
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: g,
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                 ),
               ),
-            ),
-            // bottom fade so text always reads
+            // dark fade so text always reads
             const DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.bottomCenter,
                   end: Alignment.topCenter,
-                  colors: [Color(0x9E000000), Color(0x1F000000)],
-                  stops: [0.0, 0.55],
+                  colors: [Color(0x9E000000), Color(0x1F000000), Color(0x1A000000)],
+                  stops: [0.0, 0.45, 1.0],
                 ),
               ),
             ),
@@ -357,31 +386,34 @@ class _StatusCard extends StatelessWidget {
                 padding: const EdgeInsets.all(2.5),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: seen
+                  color: item.seen ? Colors.white.withOpacity(0.45) : null,
+                  gradient: item.seen
                       ? null
                       : const LinearGradient(
-                          colors: [KColors.amber, Color(0xFFFFD79A)]),
-                  color: seen ? const Color(0x73FFFFFF) : null,
+                          colors: [KColors.amber, Colors.white]),
                 ),
                 child: Container(
                   width: 34,
                   height: 34,
                   decoration: BoxDecoration(
-                    color: pair.last,
+                    color: KColors.teal,
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white70, width: 2),
+                    border: Border.all(
+                        color: Colors.white.withOpacity(0.9), width: 2),
                   ),
                   alignment: Alignment.center,
                   child: Text(
-                      item.name.isNotEmpty ? item.name[0].toUpperCase() : '?',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700)),
+                    item.name.isNotEmpty ? item.name[0].toUpperCase() : '?',
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700),
+                  ),
                 ),
               ),
             ),
-            if (!seen)
+            // NEW tag
+            if (fresh)
               Positioned(
                 top: 12,
                 right: 12,
@@ -400,19 +432,25 @@ class _StatusCard extends StatelessWidget {
                 ),
               ),
             // text preview
-            if (item.type == 'text')
+            if (!isPhoto)
               Positioned(
                 left: 12,
                 right: 12,
                 top: 56,
-                child: Text(item.payload,
-                    maxLines: 5,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                        height: 1.35)),
+                child: Text(
+                  item.payload,
+                  maxLines: 5,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    height: 1.35,
+                    shadows: [
+                      Shadow(color: Color(0x66000000), blurRadius: 6),
+                    ],
+                  ),
+                ),
               ),
             // footer
             Positioned(
@@ -431,11 +469,26 @@ class _StatusCard extends StatelessWidget {
                           fontSize: 13.5,
                           fontWeight: FontWeight.w700)),
                   const SizedBox(height: 2),
-                  Text('${_ago(item.ts)} · ${item.views} views',
-                      style: TextStyle(
-                          color: Colors.white.withOpacity(0.85),
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w500)),
+                  Row(
+                    children: [
+                      Text(_ago(item.ts),
+                          style: TextStyle(
+                              color: Colors.white.withOpacity(0.85),
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w500)),
+                      if (item.views > 0) ...[
+                        const SizedBox(width: 6),
+                        Icon(Icons.visibility_outlined,
+                            size: 12, color: Colors.white.withOpacity(0.85)),
+                        const SizedBox(width: 3),
+                        Text('${item.views}',
+                            style: TextStyle(
+                                color: Colors.white.withOpacity(0.85),
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w500)),
+                      ],
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -444,25 +497,45 @@ class _StatusCard extends StatelessWidget {
       ),
     );
   }
-}
 
-class StatusItem {
-  final String id;
-  final String kalId;
-  final String name;
-  final String? username;
-  final String type;
-  final String payload;
-  final int views;
-  final int ts;
-  StatusItem({
-    required this.id,
-    required this.kalId,
-    required this.name,
-    this.username,
-    required this.type,
-    required this.payload,
-    this.views = 0,
-    required this.ts,
-  });
+  void _open(BuildContext context, Uint8List? bytes) {
+    final g = KColors.avatarFor(item.kalId);
+    Navigator.of(context).push(MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          title: Text(item.name, style: const TextStyle(fontSize: 16)),
+        ),
+        body: Center(
+          child: bytes != null
+              ? InteractiveViewer(child: Image.memory(bytes))
+              : Container(
+                  margin: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(28),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: g,
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Text(
+                    item.payload,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 21,
+                        fontWeight: FontWeight.w600,
+                        height: 1.4),
+                  ),
+                ),
+        ),
+      ),
+    ));
+  }
 }

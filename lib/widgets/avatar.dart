@@ -6,27 +6,27 @@ class Avatar extends StatelessWidget {
   final String seed;
   final String label;
   final double size;
-  final bool ring;          // amber ring (unseen status)
-  final bool ringSeen;      // grey ring (seen status)
+  final bool ring;          // unseen-status ring
+  final bool ringSeen;
 
   const Avatar({
     super.key,
     required this.seed,
     required this.label,
-    this.size = 52,
+    this.size = 48,
     this.ring = false,
     this.ringSeen = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final pair = KColors.avatarPairFor(seed);
-    final inner = Container(
+    final g = KColors.avatarFor(seed);
+    final photo = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: pair,
+          colors: g,
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -43,22 +43,22 @@ class Avatar extends StatelessWidget {
       ),
     );
 
-    if (!ring && !ringSeen) return inner;
+    if (!ring) return photo;
 
     return Container(
       padding: const EdgeInsets.all(2.5),
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        gradient: ring
-            ? const LinearGradient(
-                colors: [KColors.amber, Color(0xFFFFD79A)],
+        color: ringSeen ? Colors.white.withOpacity(0.45) : null,
+        gradient: ringSeen
+            ? null
+            : const LinearGradient(
+                colors: [KColors.amber, Colors.white],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-              )
-            : null,
-        color: ringSeen ? const Color(0x66FFFFFF) : null,
+              ),
       ),
-      child: inner,
+      child: photo,
     );
   }
 }
