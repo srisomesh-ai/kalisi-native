@@ -34,6 +34,10 @@ jobs:
           GRADLE=android/app/build.gradle.kts
           if [ -f "$GRADLE" ]; then
             sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 23/' "$GRADLE" || true
+            # Firebase needs compileSdk 35
+            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 35/' "$GRADLE" || true
+            sed -i 's/compileSdk = [0-9]\+/compileSdk = 35/' "$GRADLE" || true
+            sed -i 's/targetSdk = flutter.targetSdkVersion/targetSdk = 34/' "$GRADLE" || true
             # Force the applicationId + namespace to com.messenger.app (Firebase package)
             sed -i 's/applicationId = "[^"]*"/applicationId = "com.messenger.app"/' "$GRADLE" || true
             sed -i 's/namespace = "[^"]*"/namespace = "com.messenger.app"/' "$GRADLE" || true
@@ -109,8 +113,12 @@ jobs:
           set -o pipefail
           if ! flutter build apk --debug 2>&1 | tee build.log; then
             echo "BUILD FAILED — extracting error lines:"
-            grep -iE "error:|e: |exception|FAILURE:|What went wrong|Could not|A problem occurred|Execution failed|> Task .* FAILED" build.log | tail -25 | while IFS= read -r line; do
+            grep -iE "error:|e: |exception|FAILURE:|What went wrong|Could not|A problem occurred|Execution failed|> Task .* FAILED|minCompileSdk|AAR metadata|compileSdk|dependency requires|is not compatible" build.log | tail -25 | while IFS= read -r line; do
               echo "::error::${line}"
+            done
+            # also emit the 20 lines following "What went wrong" for the real cause
+            awk '/What went wrong/{f=1} f{print; n++} n>20{exit}' build.log | while IFS= read -r line; do
+              echo "::error::CAUSE ${line}"
             done
             exit 1
           fi
