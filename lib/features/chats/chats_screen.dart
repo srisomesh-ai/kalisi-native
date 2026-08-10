@@ -10,6 +10,16 @@ import 'chat_view.dart';
 final chatSearchProvider = StateProvider<String>((ref) => '');
 final chatFilterProvider = StateProvider<String>((ref) => 'all');
 
+/// Live list of the active persona's contacts.
+final contactsStreamProvider = StreamProvider<List<Contact>>((ref) async* {
+  final me = await ref.watch(activePersonaProvider.future);
+  if (me == null) {
+    yield const <Contact>[];
+    return;
+  }
+  yield* ref.watch(dbProvider).watchContacts(me.id);
+});
+
 class ChatsScreen extends ConsumerWidget {
   const ChatsScreen({super.key});
 
