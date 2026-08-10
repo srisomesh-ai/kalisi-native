@@ -333,7 +333,7 @@ class _StatusCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final g = KColors.avatarFor(item.kalId);
+    final g = KColors.avatarPairFor(item.kalId);
     final isPhoto = item.type == 'photo' && item.payload.isNotEmpty;
     Uint8List? bytes;
     if (isPhoto) {
@@ -499,7 +499,7 @@ class _StatusCard extends StatelessWidget {
   }
 
   void _open(BuildContext context, Uint8List? bytes) {
-    final g = KColors.avatarFor(item.kalId);
+    final g = KColors.avatarPairFor(item.kalId);
     Navigator.of(context).push(MaterialPageRoute(
       fullscreenDialog: true,
       builder: (_) => Scaffold(
