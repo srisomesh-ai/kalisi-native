@@ -121,27 +121,29 @@ jobs:
           find build -name "*.apk" -type f 2>/dev/null || echo "NO APK FOUND"
           ls -la build/app/outputs/flutter-apk/ 2>/dev/null || echo "flutter-apk dir missing"
 
-      - name: Upload debug APK
-        if: success()
-        uses: actions/upload-artifact@v4
-        with:
-          name: kalisi-native-debug-apk
-          path: build/app/outputs/flutter-apk/app-debug.apk
-          if-no-files-found: error
-
-      - name: Build release APK + AAB (for Play Store)
-        if: false  # temporarily disabled — building debug APK only for fast testing
+      - name: Build release APK + AAB (small, Play Store)
         run: |
           set -o pipefail
-          echo "=== Release APK (for direct install / testing) ==="
+          echo "=== Release APKs split per architecture (smallest — ~10-12 MB each) ==="
+          flutter build apk --release --split-per-abi 2>&1 | tee -a build.log || true
+          echo "=== Also a universal release APK (works on any phone) ==="
           flutter build apk --release 2>&1 | tee -a build.log || true
           echo "=== Release AAB (for Play Store upload) ==="
           flutter build appbundle --release 2>&1 | tee -a build.log || true
-          echo "--- release outputs ---"
-          find build -name "*.aab" -o -name "app-release.apk" 2>/dev/null || true
+          echo "--- release outputs + sizes ---"
+          ls -lh build/app/outputs/flutter-apk/*.apk 2>/dev/null || true
+          ls -lh build/app/outputs/bundle/release/*.aab 2>/dev/null || true
 
-      - name: Upload release APK
-        if: false
+      - name: Upload small release APK (arm64 — most phones)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kalisi-small-apk-arm64
+          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          if-no-files-found: warn
+
+      - name: Upload universal release APK (any phone)
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: kalisi-release-apk
@@ -149,7 +151,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload release AAB (Play Store)
-        if: false
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: kalisi-release-aab
