@@ -57,6 +57,13 @@ jobs:
           echo "--- manifest perms ---"; grep -E "uses-permission" "$MANIFEST" || true
           # Set the visible app name to "Kalisi"
           sed -i 's/android:label="kalisi"/android:label="Kalisi"/' "$MANIFEST" || true
+          # Enable core library desugaring + google-services plugin
+          python3 ci/enable_desugaring.py
+          # Firebase config (committed at ci/google-services.json)
+          if [ -f ci/google-services.json ]; then
+            cp ci/google-services.json android/app/google-services.json
+            echo "google-services.json installed"
+          fi
 
       - name: Wire Firebase (push notifications)
         run: |

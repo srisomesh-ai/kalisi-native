@@ -26,6 +26,7 @@ dependencies:
   # Media
   image_picker: ^1.1.2
   audioplayers: ^6.0.0
+
   # Push notifications (Firebase)
   firebase_core: ^3.6.0
   firebase_messaging: ^15.1.3
