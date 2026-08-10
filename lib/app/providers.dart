@@ -5,6 +5,7 @@ import '../data/db/database.dart';
 import '../data/api/api_client.dart';
 import '../data/repositories/auth_repository.dart';
 import '../data/repositories/message_repository.dart';
+import '../data/repositories/contacts_repository.dart';
 
 /// Single database instance for the app.
 final dbProvider = Provider<KalisiDb>((ref) {
@@ -24,6 +25,11 @@ final authRepoProvider = Provider<AuthRepository>((ref) {
 /// Message repository (send/receive encrypted messages).
 final messageRepoProvider = Provider<MessageRepository>((ref) {
   return MessageRepository(ref.watch(dbProvider), ref.watch(apiProvider));
+});
+
+/// Contacts repository (add friend, requests).
+final contactsRepoProvider = Provider<ContactsRepository>((ref) {
+  return ContactsRepository(ref.watch(dbProvider), ref.watch(apiProvider));
 });
 
 /// Background poller: every few seconds, fetch new messages for the active persona.

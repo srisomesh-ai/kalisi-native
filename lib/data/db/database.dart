@@ -65,6 +65,9 @@ class Messages extends Table {
 class KalisiDb extends _$KalisiDb {
   KalisiDb() : super(_open());
 
+  /// For unit tests — pass an in-memory NativeDatabase.
+  KalisiDb.forTesting(super.executor);
+
   @override
   int get schemaVersion => 1;
 
