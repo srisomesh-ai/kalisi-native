@@ -81,8 +81,72 @@ class MessageRepository {
     }
   }
 
-  /// Poll the server for new messages + delivery receipts, decrypt, and store.
-  /// Returns the number of new messages received.
+  /// Send a media message (photo or voice) to a contact.
+  /// [kind] is 'img' or 'voice'. [dataUrl] is a base64 data URL
+  /// (image) or base64 audio. [localPath] is stored for local display.
+  Future<void> sendMedia({
+    required Persona me,
+    required Contact contact,
+    required String kind, // 'img' | 'voice'
+    required String dataUrl,
+    String? localPath,
+    int durationSec = 0,
+    List<int>? waveform,
+    bool burn = false,
+    int timer = 0,
+  }) async {
+    final cid = newUuid();
+    final ts = nowMs();
+
+    await _db.insertMessage(MessagesCompanion.insert(
+      id: cid,
+      contactId: contact.id,
+      personaId: me.id,
+      fromMe: 'me',
+      kind: Value(kind),
+      body: Value(kind == 'img' ? dataUrl : null),
+      mediaPath: Value(localPath),
+      ts: ts,
+      status: const Value('sending'),
+      burn: Value(burn),
+    ));
+
+    final theirPub = contact.publicJwk;
+    if (theirPub == null) {
+      await _db.updateMessageStatus(cid, 'failed');
+      throw ApiException('no_pubkey');
+    }
+
+    final obj = <String, dynamic>{
+      'kind': kind,
+      'text': null,
+      'img': kind == 'img' ? dataUrl : null,
+      'audio': kind == 'voice' ? dataUrl : null,
+      'wave': waveform,
+      'dur': durationSec,
+      'burn': burn,
+      'replyTo': null,
+      'cid': cid,
+      'ts': ts,
+      'timer': timer,
+    };
+
+    try {
+      final enc = await KalisiCrypto.encryptObject(obj, me.privateJwk, theirPub);
+      await _api.send(
+        kalId: me.kalId,
+        token: me.token,
+        to: contact.kalId,
+        clientId: cid,
+        iv: enc.iv,
+        blob: enc.blob,
+      );
+      await _db.updateMessageStatus(cid, 'sent');
+    } catch (e) {
+      await _db.updateMessageStatus(cid, 'failed');
+      rethrow;
+    }
+  }
   Future<int> poll(Persona me) async {
     final res = await _api.fetch(kalId: me.kalId, token: me.token);
 
@@ -110,13 +174,23 @@ class MessageRepository {
           contact.publicJwk!,
         );
         final cid = obj['cid']?.toString() ?? newUuid();
+        final kind = obj['kind']?.toString() ?? 'text';
+        // For media, keep the payload in body so the UI can render it.
+        String? body;
+        if (kind == 'img') {
+          body = obj['img']?.toString();
+        } else if (kind == 'voice') {
+          body = obj['audio']?.toString();
+        } else {
+          body = obj['text']?.toString();
+        }
         await _db.insertMessage(MessagesCompanion.insert(
           id: cid,
           contactId: contact.id,
           personaId: me.id,
           fromMe: 'them',
-          kind: Value(obj['kind']?.toString() ?? 'text'),
-          body: Value(obj['text']?.toString()),
+          kind: Value(kind),
+          body: Value(body),
           ts: (obj['ts'] is int) ? obj['ts'] as int : ts,
           status: const Value('delivered'),
           burn: Value(obj['burn'] == true),

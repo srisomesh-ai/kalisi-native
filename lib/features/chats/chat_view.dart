@@ -1,5 +1,11 @@
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:record/record.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../../theme/colors.dart';
 import '../../app/providers.dart';
 import '../../data/db/database.dart';
@@ -22,12 +28,16 @@ class ChatView extends ConsumerStatefulWidget {
 class _ChatViewState extends ConsumerState<ChatView> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
+  final _recorder = AudioRecorder();
   bool _sending = false;
+  bool _recording = false;
+  DateTime? _recStart;
 
   @override
   void dispose() {
     _input.dispose();
     _scroll.dispose();
+    _recorder.dispose();
     super.dispose();
   }
 
@@ -56,7 +66,114 @@ class _ChatViewState extends ConsumerState<ChatView> {
     }
   }
 
-  void _scrollToBottom() {
+  Future<void> _sendPhoto() async {
+    if (_sending) return;
+    try {
+      final picker = ImagePicker();
+      final file = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1280,
+        maxHeight: 1280,
+        imageQuality: 70,
+      );
+      if (file == null) return;
+      setState(() => _sending = true);
+      final bytes = await file.readAsBytes();
+      final dataUrl = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+      final me = ref.read(activePersonaProvider).valueOrNull;
+      if (me == null) return;
+      await ref.read(messageRepoProvider).sendMedia(
+            me: me,
+            contact: widget.contact,
+            kind: 'img',
+            dataUrl: dataUrl,
+            localPath: file.path,
+          );
+      _scrollToBottom();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not send photo')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _pickCamera() async {
+    if (_sending) return;
+    try {
+      final picker = ImagePicker();
+      final file = await picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 1280,
+        maxHeight: 1280,
+        imageQuality: 70,
+      );
+      if (file == null) return;
+      setState(() => _sending = true);
+      final bytes = await file.readAsBytes();
+      final dataUrl = 'data:image/jpeg;base64,${base64Encode(bytes)}';
+      final me = ref.read(activePersonaProvider).valueOrNull;
+      if (me == null) return;
+      await ref.read(messageRepoProvider).sendMedia(
+            me: me,
+            contact: widget.contact,
+            kind: 'img',
+            dataUrl: dataUrl,
+            localPath: file.path,
+          );
+      _scrollToBottom();
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _toggleRecording() async {
+    if (_recording) {
+      // stop + send
+      try {
+        final path = await _recorder.stop();
+        setState(() => _recording = false);
+        if (path == null) return;
+        setState(() => _sending = true);
+        final bytes = await File(path).readAsBytes();
+        final dataUrl = 'data:audio/m4a;base64,${base64Encode(bytes)}';
+        final me = ref.read(activePersonaProvider).valueOrNull;
+        if (me == null) return;
+        final dur = DateTime.now().difference(_recStart ?? DateTime.now()).inSeconds;
+        await ref.read(messageRepoProvider).sendMedia(
+              me: me,
+              contact: widget.contact,
+              kind: 'voice',
+              dataUrl: dataUrl,
+              localPath: path,
+              durationSec: dur,
+            );
+        _scrollToBottom();
+      } catch (_) {
+      } finally {
+        if (mounted) setState(() => _sending = false);
+      }
+    } else {
+      // start
+      if (await _recorder.hasPermission()) {
+        final dir = Directory.systemTemp.path;
+        final p = '$dir/kalisi_${nowMs()}.m4a';
+        await _recorder.start(const RecordConfig(), path: p);
+        _recStart = DateTime.now();
+        setState(() => _recording = true);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Microphone permission needed')),
+          );
+        }
+      }
+    }
+  }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scroll.hasClients) {
         _scroll.animateTo(
@@ -141,7 +258,11 @@ class _ChatViewState extends ConsumerState<ChatView> {
           _Composer(
             controller: _input,
             sending: _sending,
+            recording: _recording,
             onSend: _send,
+            onPhoto: _sendPhoto,
+            onCamera: _pickCamera,
+            onVoice: _toggleRecording,
           ),
         ],
       ),
@@ -188,8 +309,7 @@ class _Bubble extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(message.body ?? '',
-                style: TextStyle(color: s.text, fontSize: 15.5, height: 1.3)),
+            _content(context, s),
             const SizedBox(height: 2),
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -215,17 +335,195 @@ class _Bubble extends StatelessWidget {
       ),
     );
   }
+
+  Widget _content(BuildContext context, KScheme s) {
+    switch (message.kind) {
+      case 'img':
+        return _ImageContent(dataUrl: message.body);
+      case 'voice':
+        return _VoiceContent(message: message);
+      default:
+        return Text(message.body ?? '',
+            style: TextStyle(color: s.text, fontSize: 15.5, height: 1.3));
+    }
+  }
 }
 
-class _Composer extends StatelessWidget {
+/// Renders a base64 data-URL image inside a bubble.
+class _ImageContent extends StatelessWidget {
+  final String? dataUrl;
+  const _ImageContent({this.dataUrl});
+  @override
+  Widget build(BuildContext context) {
+    final bytes = _decode(dataUrl);
+    if (bytes == null) {
+      return const Text('📷 Photo');
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 240, maxHeight: 300),
+        child: Image.memory(bytes, fit: BoxFit.cover),
+      ),
+    );
+  }
+
+  Uint8List? _decode(String? url) {
+    if (url == null) return null;
+    try {
+      final i = url.indexOf(',');
+      final b64 = i >= 0 ? url.substring(i + 1) : url;
+      return base64Decode(b64);
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+/// A simple voice-message player bubble.
+class _VoiceContent extends StatefulWidget {
+  final Message message;
+  const _VoiceContent({required this.message});
+  @override
+  State<_VoiceContent> createState() => _VoiceContentState();
+}
+
+class _VoiceContentState extends State<_VoiceContent> {
+  final _player = AudioPlayer();
+  bool _playing = false;
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _toggle() async {
+    if (_playing) {
+      await _player.stop();
+      setState(() => _playing = false);
+      return;
+    }
+    final data = widget.message.body;
+    if (data == null) return;
+    try {
+      final i = data.indexOf(',');
+      final b64 = i >= 0 ? data.substring(i + 1) : data;
+      final bytes = base64Decode(b64);
+      await _player.play(BytesSource(bytes));
+      setState(() => _playing = true);
+      _player.onPlayerComplete.listen((_) {
+        if (mounted) setState(() => _playing = false);
+      });
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = KScheme.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: _toggle,
+          child: Container(
+            width: 36,
+            height: 36,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(colors: [KColors.gold, KColors.ember]),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(_playing ? Icons.stop : Icons.play_arrow,
+                color: Colors.white, size: 22),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Icon(Icons.graphic_eq, color: s.muted, size: 22),
+        const SizedBox(width: 8),
+        Text('Voice', style: TextStyle(color: s.muted, fontSize: 13)),
+      ],
+    );
+  }
+}
+
+class _Composer extends StatefulWidget {
   final TextEditingController controller;
   final bool sending;
+  final bool recording;
   final VoidCallback onSend;
+  final VoidCallback onPhoto;
+  final VoidCallback onCamera;
+  final VoidCallback onVoice;
   const _Composer({
     required this.controller,
     required this.sending,
+    required this.recording,
     required this.onSend,
+    required this.onPhoto,
+    required this.onCamera,
+    required this.onVoice,
   });
+
+  @override
+  State<_Composer> createState() => _ComposerState();
+}
+
+class _ComposerState extends State<_Composer> {
+  bool _hasText = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onChange);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onChange);
+    super.dispose();
+  }
+
+  void _onChange() {
+    final has = widget.controller.text.trim().isNotEmpty;
+    if (has != _hasText) setState(() => _hasText = has);
+  }
+
+  void _showAttach(BuildContext context) {
+    final s = KScheme.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: s.panel,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.photo_library_rounded,
+                  color: KColors.gold),
+              title: Text('Photo library', style: TextStyle(color: s.text)),
+              onTap: () {
+                Navigator.pop(ctx);
+                widget.onPhoto();
+              },
+            ),
+            ListTile(
+              leading:
+                  const Icon(Icons.camera_alt_rounded, color: KColors.gold),
+              title: Text('Camera', style: TextStyle(color: s.text)),
+              onTap: () {
+                Navigator.pop(ctx);
+                widget.onCamera();
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -233,7 +531,7 @@ class _Composer extends StatelessWidget {
     return SafeArea(
       top: false,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+        padding: const EdgeInsets.fromLTRB(6, 8, 10, 8),
         decoration: BoxDecoration(
           color: s.bg,
           boxShadow: [
@@ -246,39 +544,65 @@ class _Composer extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: s.panel,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: s.line),
-                ),
-                child: TextField(
-                  controller: controller,
-                  style: TextStyle(color: s.text, fontSize: 15.5),
-                  minLines: 1,
-                  maxLines: 5,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: InputDecoration(
-                    hintText: 'Message',
-                    hintStyle: TextStyle(color: s.faint),
-                    border: InputBorder.none,
-                    contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                  ),
-                  onSubmitted: (_) => onSend(),
-                ),
+            if (!widget.recording)
+              IconButton(
+                onPressed: () => _showAttach(context),
+                icon: Icon(Icons.add_circle_outline_rounded,
+                    color: s.muted, size: 26),
               ),
+            Expanded(
+              child: widget.recording
+                  ? Container(
+                      height: 48,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      decoration: BoxDecoration(
+                        color: s.panel,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: KColors.ember),
+                      ),
+                      child: Row(
+                        children: [
+                          const _RecDot(),
+                          const SizedBox(width: 10),
+                          Text('Recording… tap to send',
+                              style: TextStyle(color: s.text, fontSize: 14)),
+                        ],
+                      ),
+                    )
+                  : Container(
+                      decoration: BoxDecoration(
+                        color: s.panel,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: s.line),
+                      ),
+                      child: TextField(
+                        controller: widget.controller,
+                        style: TextStyle(color: s.text, fontSize: 15.5),
+                        minLines: 1,
+                        maxLines: 5,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: InputDecoration(
+                          hintText: 'Message',
+                          hintStyle: TextStyle(color: s.faint),
+                          border: InputBorder.none,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 18, vertical: 12),
+                        ),
+                        onSubmitted: (_) => widget.onSend(),
+                      ),
+                    ),
             ),
             const SizedBox(width: 8),
             GestureDetector(
-              onTap: onSend,
+              onTap: widget.sending
+                  ? null
+                  : (_hasText ? widget.onSend : widget.onVoice),
               child: Container(
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  gradient:
-                      const LinearGradient(colors: [KColors.gold, KColors.ember]),
+                  gradient: const LinearGradient(
+                      colors: [KColors.gold, KColors.ember]),
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
@@ -288,16 +612,57 @@ class _Composer extends StatelessWidget {
                     ),
                   ],
                 ),
-                child: sending
+                child: widget.sending
                     ? const Padding(
                         padding: EdgeInsets.all(14),
                         child: CircularProgressIndicator(
                             strokeWidth: 2.2, color: Colors.white),
                       )
-                    : const Icon(Icons.send_rounded, color: Colors.white, size: 22),
+                    : Icon(
+                        widget.recording
+                            ? Icons.send_rounded
+                            : (_hasText ? Icons.send_rounded : Icons.mic_rounded),
+                        color: Colors.white,
+                        size: 22),
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Pulsing red dot shown while recording a voice message.
+class _RecDot extends StatefulWidget {
+  const _RecDot();
+  @override
+  State<_RecDot> createState() => _RecDotState();
+}
+
+class _RecDotState extends State<_RecDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween(begin: 0.3, end: 1.0).animate(_c),
+      child: Container(
+        width: 12,
+        height: 12,
+        decoration: const BoxDecoration(
+          color: KColors.ember,
+          shape: BoxShape.circle,
         ),
       ),
     );

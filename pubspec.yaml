@@ -23,6 +23,10 @@ dependencies:
   google_fonts: ^6.2.1
   # QR (for Connect screen)
   qr_flutter: ^4.1.0
+  # Media
+  image_picker: ^1.1.2
+  record: ^5.1.2
+  audioplayers: ^6.0.0
 
 dev_dependencies:
   flutter_test:

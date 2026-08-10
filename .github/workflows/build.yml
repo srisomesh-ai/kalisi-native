@@ -41,6 +41,12 @@ jobs:
           fi
           echo "--- app gradle ---"; grep -nE "minSdk|compileSdk|ndkVersion" "$GRADLE" || true
           echo "--- settings ---"; grep -iE "kotlin|android.application" android/settings.gradle.kts 2>/dev/null || true
+          # Add camera + microphone + internet permissions for media messages
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          if [ -f "$MANIFEST" ] && ! grep -q "RECORD_AUDIO" "$MANIFEST"; then
+            sed -i 's#<manifest\(.*\)>#<manifest\1>\n    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.CAMERA"/>#' "$MANIFEST"
+          fi
+          echo "--- manifest perms ---"; grep -E "uses-permission" "$MANIFEST" || true
 
       - name: Get dependencies
         run: flutter pub get
