@@ -29,34 +29,27 @@ class ChatsScreen extends ConsumerWidget {
 
     return Column(
       children: [
-        // Header
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+        // Header (teal bar)
+        Container(
+          color: KColors.teal,
+          padding: const EdgeInsets.fromLTRB(16, 10, 8, 12),
           child: Row(
             children: [
-              Avatar(
-                seed: persona?.username ?? 'me',
-                label: (persona?.name.isNotEmpty ?? false)
-                    ? persona!.name[0].toUpperCase()
-                    : 'S',
-                size: 44,
-              ),
-              const SizedBox(width: 12),
               Text.rich(
                 TextSpan(children: [
                   TextSpan(
-                      text: 'Kali',
-                      style: AppTheme.display(size: 20, color: s.text)),
+                      text: 'Kalisi',
+                      style: AppTheme.display(size: 22, color: Colors.white)),
                   TextSpan(
-                      text: 'si',
-                      style: AppTheme.display(size: 20, color: KColors.gold)),
+                      text: '.',
+                      style: AppTheme.display(size: 22, color: KColors.gold)),
                 ]),
               ),
               const Spacer(),
-              _HeaderIcon(icon: Icons.group_outlined, onTap: () {}),
-              _HeaderIcon(icon: Icons.qr_code_rounded, onTap: () {}),
+              _HeaderIcon(icon: Icons.qr_code_rounded, onTap: () {}, light: true),
               _HeaderIcon(
                 icon: Icons.wb_sunny_outlined,
+                light: true,
                 onTap: () {
                   final m = ref.read(themeModeProvider);
                   ref.read(themeModeProvider.notifier).state =
@@ -68,7 +61,7 @@ class ChatsScreen extends ConsumerWidget {
         ),
         // Search
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 6),
           child: Container(
             decoration: BoxDecoration(
               color: s.panel,
@@ -114,13 +107,14 @@ class ChatsScreen extends ConsumerWidget {
 class _HeaderIcon extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
-  const _HeaderIcon({required this.icon, required this.onTap});
+  final bool light;
+  const _HeaderIcon({required this.icon, required this.onTap, this.light = false});
   @override
   Widget build(BuildContext context) {
     final s = KScheme.of(context);
     return IconButton(
       onPressed: onTap,
-      icon: Icon(icon, color: s.muted, size: 22),
+      icon: Icon(icon, color: light ? Colors.white : s.muted, size: 22),
     );
   }
 }

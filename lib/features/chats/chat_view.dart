@@ -148,7 +148,9 @@ class _ChatViewState extends ConsumerState<ChatView> {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
-        backgroundColor: s.panel,
+        backgroundColor: KColors.teal,
+        foregroundColor: Colors.white,
+        iconTheme: const IconThemeData(color: Colors.white),
         title: Row(
           children: [
             Avatar(
@@ -165,16 +167,18 @@ class _ChatViewState extends ConsumerState<ChatView> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(widget.contact.name,
-                      style: TextStyle(
-                          color: s.text,
+                      style: const TextStyle(
+                          color: Colors.white,
                           fontSize: 16.5,
-                          fontWeight: FontWeight.w700)),
+                          fontWeight: FontWeight.w600)),
                   Row(
                     children: [
-                      Icon(Icons.lock, size: 11, color: KColors.gold),
+                      const Icon(Icons.lock, size: 11, color: Color(0xFFBFE6EC)),
                       const SizedBox(width: 3),
                       Text('end-to-end encrypted',
-                          style: TextStyle(color: s.faint, fontSize: 11.5)),
+                          style: TextStyle(
+                              color: Colors.white.withOpacity(0.8),
+                              fontSize: 11.5)),
                     ],
                   ),
                 ],

@@ -1,44 +1,50 @@
 import 'package:flutter/material.dart';
 
-/// Kalisi brand palette — matches the web app.
+/// Kalisi palette — matches the HamaraService / BharatGPS Flutter apps:
+/// teal headers/nav + warm-orange actions on a soft blue-green background.
 class KColors {
-  // Brand
-  static const gold = Color(0xFFF5A83C);
-  static const goldDeep = Color(0xFFD98A1F);
-  static const ember = Color(0xFFE4573F);
-  static const ok = Color(0xFF59C98D);
+  // Brand (warm orange = primary action; kept names gold/ember for compatibility)
+  static const gold = Color(0xFFE8651A);      // warm orange (primary action)
+  static const goldDeep = Color(0xFFC9510F);
+  static const ember = Color(0xFFC9510F);     // deeper orange (gradient end)
+  static const ok = Color(0xFF2ECC71);        // green (online / success)
 
-  // Dark theme
-  static const dBg = Color(0xFF0D1120);
-  static const dPanel = Color(0xFF161C30);
-  static const dPanel2 = Color(0xFF1E2540);
-  static const dLine = Color(0xFF28304F);
-  static const dText = Color(0xFFEDEEF4);
-  static const dMuted = Color(0xFF8A91AB);
-  static const dFaint = Color(0xFF5A6180);
-  static const dMine = Color(0xFF2C3866);
-  static const dTheirs = Color(0xFF1B2138);
+  // Teal (headers, nav, accents)
+  static const teal = Color(0xFF1B6B7A);
+  static const teal2 = Color(0xFF134F5C);
+  static const tealSoft = Color(0xFFE6F4F6);
 
-  // Light theme
-  static const lBg = Color(0xFFF4F5FA);
+  // Dark theme (teal-tinted dark)
+  static const dBg = Color(0xFF0E1A1D);
+  static const dPanel = Color(0xFF14262B);
+  static const dPanel2 = Color(0xFF1B3238);
+  static const dLine = Color(0xFF244047);
+  static const dText = Color(0xFFEAF2F3);
+  static const dMuted = Color(0xFF8FA6AB);
+  static const dFaint = Color(0xFF5E767C);
+  static const dMine = Color(0xFF1F4A52);      // teal bubble (mine)
+  static const dTheirs = Color(0xFF17292E);
+
+  // Light theme (HamaraService)
+  static const lBg = Color(0xFFF0F7F9);        // soft blue-green
   static const lPanel = Color(0xFFFFFFFF);
-  static const lPanel2 = Color(0xFFEEF0F7);
-  static const lLine = Color(0xFFDDE1EC);
-  static const lText = Color(0xFF141A2E);
-  static const lMuted = Color(0xFF5A6178);
-  static const lFaint = Color(0xFF9098AE);
-  static const lMine = Color(0xFFD6E4FF);
+  static const lPanel2 = Color(0xFFE9F1F3);
+  static const lLine = Color(0xFFE2E8F0);
+  static const lText = Color(0xFF1A1A2E);
+  static const lMuted = Color(0xFF718096);
+  static const lFaint = Color(0xFF9AA8AE);
+  static const lMine = Color(0xFFDFF1F4);      // soft teal bubble (mine)
   static const lTheirs = Color(0xFFFFFFFF);
 
-  // Avatar palette (deterministic per contact)
+  // Avatar palette (warm + teal mix, matches the apps)
   static const avatarColors = [
-    Color(0xFFF5A83C),
-    Color(0xFF7FA8F5),
-    Color(0xFF59C98D),
+    Color(0xFFE8651A),
+    Color(0xFF1B6B7A),
+    Color(0xFF2ECC71),
+    Color(0xFF6C5CE7),
+    Color(0xFFF39C12),
+    Color(0xFF2E86DE),
     Color(0xFFE4739A),
-    Color(0xFFB58CF0),
-    Color(0xFF5FC9C9),
-    Color(0xFFE4A05F),
   ];
 
   static Color avatarFor(String seed) {

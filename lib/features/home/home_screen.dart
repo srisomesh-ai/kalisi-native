@@ -96,7 +96,7 @@ class _NavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = KScheme.of(context);
-    final color = active ? KColors.gold : s.faint;
+    final color = active ? KColors.teal : s.faint;
     return Expanded(
       child: InkWell(
         onTap: onTap,

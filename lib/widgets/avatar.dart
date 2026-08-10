@@ -20,10 +20,10 @@ class Avatar extends StatelessWidget {
       height: size,
       decoration: BoxDecoration(
         color: color,
-        shape: BoxShape.circle,
+        borderRadius: BorderRadius.circular(size * 0.3),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.16),
+            color: color.withOpacity(0.28),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
