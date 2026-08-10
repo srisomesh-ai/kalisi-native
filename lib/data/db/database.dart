@@ -120,6 +120,21 @@ class KalisiDb extends _$KalisiDb {
   Future<void> updateMessageStatus(String id, String status) =>
       (update(messages)..where((t) => t.id.equals(id)))
           .write(MessagesCompanion(status: Value(status)));
+
+  /// Mark a message as burned (its content is gone).
+  Future<void> markBurned(String id) =>
+      (update(messages)..where((t) => t.id.equals(id))).write(
+          const MessagesCompanion(burned: Value(true), body: Value(null)));
+
+  /// Set the reaction the other person left on one of my messages.
+  Future<void> setReaction(String id, String? emoji) =>
+      (update(messages)..where((t) => t.id.equals(id)))
+          .write(MessagesCompanion(reactionTheirs: Value(emoji)));
+
+  /// Set my own reaction on a message.
+  Future<void> setMyReaction(String id, String? emoji) =>
+      (update(messages)..where((t) => t.id.equals(id)))
+          .write(MessagesCompanion(reactionMine: Value(emoji)));
   Future<void> clearMessages(String contactId) =>
       (delete(messages)..where((t) => t.contactId.equals(contactId))).go();
   Future<Message?> lastMessage(String contactId) => (select(messages)

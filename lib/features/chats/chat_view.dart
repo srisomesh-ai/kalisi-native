@@ -221,67 +221,140 @@ class _ChatViewState extends ConsumerState<ChatView> {
   }
 }
 
-class _Bubble extends StatelessWidget {
+class _Bubble extends ConsumerWidget {
   final Message message;
   const _Bubble({required this.message});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final s = KScheme.of(context);
     final mine = message.fromMe == 'me';
     final bg = mine ? s.mine : s.theirs;
     final align = mine ? Alignment.centerRight : Alignment.centerLeft;
+    final reaction = message.reactionTheirs ?? message.reactionMine;
 
     return Container(
       alignment: align,
-      margin: const EdgeInsets.symmetric(vertical: 3),
-      child: Container(
-        constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.76,
-        ),
-        padding: const EdgeInsets.fromLTRB(14, 9, 14, 7),
-        decoration: BoxDecoration(
-          color: bg,
-          borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(16),
-            topRight: const Radius.circular(16),
-            bottomLeft: Radius.circular(mine ? 16 : 4),
-            bottomRight: Radius.circular(mine ? 4 : 16),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.06),
-              blurRadius: 4,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _content(context, s),
-            const SizedBox(height: 2),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(fmtTime(message.ts),
-                    style: TextStyle(color: s.faint, fontSize: 10.5)),
-                if (mine) ...[
-                  const SizedBox(width: 4),
-                  Icon(
-                    message.status == 'delivered' || message.status == 'read'
-                        ? Icons.done_all
-                        : Icons.done,
-                    size: 14,
-                    color: message.status == 'read'
-                        ? KColors.gold
-                        : s.faint,
+      margin: EdgeInsets.only(
+          top: 3, bottom: reaction != null ? 16 : 3),
+      child: Column(
+        crossAxisAlignment:
+            mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              GestureDetector(
+                onLongPress: () => _showReactionPicker(context, ref),
+                child: Container(
+                  constraints: BoxConstraints(
+                    maxWidth: MediaQuery.of(context).size.width * 0.76,
                   ),
-                ],
-              ],
-            ),
-          ],
+                  padding: const EdgeInsets.fromLTRB(14, 9, 14, 7),
+                  decoration: BoxDecoration(
+                    color: bg,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(16),
+                      topRight: const Radius.circular(16),
+                      bottomLeft: Radius.circular(mine ? 16 : 4),
+                      bottomRight: Radius.circular(mine ? 4 : 16),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.06),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _content(context, s),
+                      const SizedBox(height: 2),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(fmtTime(message.ts),
+                              style: TextStyle(color: s.faint, fontSize: 10.5)),
+                          if (mine) ...[
+                            const SizedBox(width: 4),
+                            Icon(
+                              message.status == 'delivered' ||
+                                      message.status == 'read'
+                                  ? Icons.done_all
+                                  : Icons.done,
+                              size: 14,
+                              color: message.status == 'read'
+                                  ? KColors.gold
+                                  : s.faint,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // Floating reaction chip (outside the bubble, like the web)
+              if (reaction != null)
+                Positioned(
+                  bottom: -14,
+                  right: mine ? 8 : null,
+                  left: mine ? null : 8,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: s.panel,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: s.bg, width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.15),
+                          blurRadius: 6,
+                        ),
+                      ],
+                    ),
+                    child: Text(reaction, style: const TextStyle(fontSize: 14)),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showReactionPicker(BuildContext context, WidgetRef ref) {
+    final s = KScheme.of(context);
+    const emojis = ['❤️', '😂', '👍', '🔥', '😮', '🙏'];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        margin: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: s.panel,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: emojis
+              .map((e) => GestureDetector(
+                    onTap: () async {
+                      Navigator.pop(ctx);
+                      await ref.read(messageRepoProvider).reactTo(
+                            ref.read(activePersonaProvider).valueOrNull!,
+                            message,
+                            e,
+                          );
+                    },
+                    child: Text(e, style: const TextStyle(fontSize: 30)),
+                  ))
+              .toList(),
         ),
       ),
     );
@@ -300,7 +373,7 @@ class _Bubble extends StatelessWidget {
   }
 }
 
-/// Renders a base64 data-URL image inside a bubble.
+/// Renders a base64 data-URL image inside a bubble, tappable to view fullscreen.
 class _ImageContent extends StatelessWidget {
   final String? dataUrl;
   const _ImageContent({this.dataUrl});
@@ -310,11 +383,19 @@ class _ImageContent extends StatelessWidget {
     if (bytes == null) {
       return const Text('📷 Photo');
     }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 240, maxHeight: 300),
-        child: Image.memory(bytes, fit: BoxFit.cover),
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => _FullscreenImage(bytes: bytes),
+          fullscreenDialog: true,
+        ));
+      },
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 240, maxHeight: 300),
+          child: Image.memory(bytes, fit: BoxFit.cover),
+        ),
       ),
     );
   }
@@ -328,6 +409,30 @@ class _ImageContent extends StatelessWidget {
     } catch (_) {
       return null;
     }
+  }
+}
+
+/// Fullscreen image viewer with pinch-to-zoom.
+class _FullscreenImage extends StatelessWidget {
+  final Uint8List bytes;
+  const _FullscreenImage({required this.bytes});
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        elevation: 0,
+      ),
+      body: Center(
+        child: InteractiveViewer(
+          minScale: 0.8,
+          maxScale: 4,
+          child: Image.memory(bytes, fit: BoxFit.contain),
+        ),
+      ),
+    );
   }
 }
 

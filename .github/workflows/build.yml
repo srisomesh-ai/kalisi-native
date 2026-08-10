@@ -130,6 +130,7 @@ jobs:
           if-no-files-found: error
 
       - name: Build release APK + AAB (for Play Store)
+        if: false  # temporarily disabled — building debug APK only for fast testing
         run: |
           set -o pipefail
           echo "=== Release APK (for direct install / testing) ==="
@@ -140,7 +141,7 @@ jobs:
           find build -name "*.aab" -o -name "app-release.apk" 2>/dev/null || true
 
       - name: Upload release APK
-        if: success()
+        if: false
         uses: actions/upload-artifact@v4
         with:
           name: kalisi-release-apk
@@ -148,7 +149,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Upload release AAB (Play Store)
-        if: success()
+        if: false
         uses: actions/upload-artifact@v4
         with:
           name: kalisi-release-aab

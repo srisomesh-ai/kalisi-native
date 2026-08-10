@@ -147,6 +147,35 @@ class MessageRepository {
       rethrow;
     }
   }
+
+  /// React to a message with an emoji: store locally and notify the sender.
+  Future<void> reactTo(Persona me, Message message, String emoji) async {
+    await _db.setMyReaction(message.id, emoji);
+
+    final contact = await _db.contactById(message.contactId);
+    if (contact?.publicJwk == null) return;
+
+    final obj = <String, dynamic>{
+      'kind': 'reaction',
+      'target': message.id,
+      'emoji': emoji,
+      'cid': newUuid(),
+      'ts': nowMs(),
+    };
+    try {
+      final enc = await KalisiCrypto.encryptObject(
+          obj, me.privateJwk, contact!.publicJwk!);
+      await _api.send(
+        kalId: me.kalId,
+        token: me.token,
+        to: contact.kalId,
+        clientId: obj['cid'] as String,
+        iv: enc.iv,
+        blob: enc.blob,
+      );
+    } catch (_) {}
+  }
+
   Future<int> poll(Persona me) async {
     final res = await _api.fetch(kalId: me.kalId, token: me.token);
 
@@ -175,6 +204,34 @@ class MessageRepository {
         );
         final cid = obj['cid']?.toString() ?? newUuid();
         final kind = obj['kind']?.toString() ?? 'text';
+
+        // Control messages (read receipts, burn acks, typing) are not chat bubbles.
+        // Apply their effect and skip storing them.
+        if (kind == 'read') {
+          final ids = (obj['ids'] as List?) ?? const [];
+          for (final id in ids) {
+            await _db.updateMessageStatus(id.toString(), 'read');
+          }
+          continue;
+        }
+        if (kind == 'burned') {
+          final bid = obj['id']?.toString();
+          if (bid != null) {
+            await _db.markBurned(bid);
+          }
+          continue;
+        }
+        if (kind == 'typing' || kind == 'delivered' || kind == 'reaction') {
+          if (kind == 'reaction') {
+            final targetId = obj['target']?.toString();
+            final emoji = obj['emoji']?.toString();
+            if (targetId != null) {
+              await _db.setReaction(targetId, emoji);
+            }
+          }
+          continue;
+        }
+
         // For media, keep the payload in body so the UI can render it.
         String? body;
         if (kind == 'img') {
@@ -183,6 +240,10 @@ class MessageRepository {
           body = obj['audio']?.toString();
         } else {
           body = obj['text']?.toString();
+        }
+        // Guard: don't store a totally empty text bubble.
+        if ((kind == 'text') && (body == null || body.trim().isEmpty)) {
+          continue;
         }
         await _db.insertMessage(MessagesCompanion.insert(
           id: cid,
