@@ -148,6 +148,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
     return Scaffold(
       appBar: AppBar(
         titleSpacing: 0,
+        backgroundColor: s.panel,
         title: Row(
           children: [
             Avatar(
@@ -155,7 +156,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
               label: widget.contact.name.isNotEmpty
                   ? widget.contact.name[0].toUpperCase()
                   : '?',
-              size: 38,
+              size: 40,
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -168,8 +169,14 @@ class _ChatViewState extends ConsumerState<ChatView> {
                           color: s.text,
                           fontSize: 16.5,
                           fontWeight: FontWeight.w700)),
-                  Text('end-to-end encrypted',
-                      style: TextStyle(color: s.faint, fontSize: 11.5)),
+                  Row(
+                    children: [
+                      Icon(Icons.lock, size: 11, color: KColors.gold),
+                      const SizedBox(width: 3),
+                      Text('end-to-end encrypted',
+                          style: TextStyle(color: s.faint, fontSize: 11.5)),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -521,6 +528,25 @@ class _Composer extends StatefulWidget {
 }
 
 class _ComposerState extends State<_Composer> {
+  bool _hasText = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onChange);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onChange);
+    super.dispose();
+  }
+
+  void _onChange() {
+    final has = widget.controller.text.trim().isNotEmpty;
+    if (has != _hasText) setState(() => _hasText = has);
+  }
+
   void _showAttach(BuildContext context) {
     final s = KScheme.of(context);
     showModalBottomSheet(
@@ -563,62 +589,88 @@ class _ComposerState extends State<_Composer> {
     final s = KScheme.of(context);
     return SafeArea(
       top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(6, 8, 10, 8),
-        decoration: BoxDecoration(
-          color: s.bg,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, -1),
-            ),
-          ],
-        ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            IconButton(
-              onPressed: () => _showAttach(context),
-              icon: Icon(Icons.add_circle_outline_rounded,
-                  color: s.muted, size: 26),
-            ),
+            // The rounded input pill with icons inside (WhatsApp style)
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
                   color: s.panel,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: s.line),
+                  borderRadius: BorderRadius.circular(26),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.06),
+                      blurRadius: 4,
+                      offset: const Offset(0, 1),
+                    ),
+                  ],
                 ),
-                child: TextField(
-                  controller: widget.controller,
-                  style: TextStyle(color: s.text, fontSize: 15.5),
-                  minLines: 1,
-                  maxLines: 5,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: InputDecoration(
-                    hintText: 'Message',
-                    hintStyle: TextStyle(color: s.faint),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 18, vertical: 12),
-                  ),
-                  onSubmitted: (_) => widget.onSend(),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    // emoji (decorative; opens keyboard emoji in practice)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 6, bottom: 2),
+                      child: Icon(Icons.emoji_emotions_outlined,
+                          color: s.faint, size: 24),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: widget.controller,
+                        style: TextStyle(color: s.text, fontSize: 16),
+                        minLines: 1,
+                        maxLines: 5,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: InputDecoration(
+                          hintText: 'Message',
+                          hintStyle: TextStyle(color: s.faint, fontSize: 16),
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 12),
+                        ),
+                        onSubmitted: (_) => widget.onSend(),
+                      ),
+                    ),
+                    // attach + camera inside the pill
+                    IconButton(
+                      onPressed: () => _showAttach(context),
+                      visualDensity: VisualDensity.compact,
+                      icon: Icon(Icons.attach_file_rounded,
+                          color: s.muted, size: 22),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: IconButton(
+                        onPressed: widget.onCamera,
+                        visualDensity: VisualDensity.compact,
+                        icon: Icon(Icons.camera_alt_rounded,
+                            color: s.muted, size: 22),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 7),
+            // mic when empty, send when typing (WhatsApp behaviour)
             GestureDetector(
-              onTap: widget.sending ? null : widget.onSend,
+              onTap: widget.sending
+                  ? null
+                  : (_hasText ? widget.onSend : null),
               child: Container(
-                width: 48,
-                height: 48,
+                width: 50,
+                height: 50,
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                       colors: [KColors.gold, KColors.ember]),
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: KColors.ember.withOpacity(0.4),
+                      color: KColors.ember.withOpacity(0.42),
                       blurRadius: 12,
                       offset: const Offset(0, 3),
                     ),
@@ -626,12 +678,14 @@ class _ComposerState extends State<_Composer> {
                 ),
                 child: widget.sending
                     ? const Padding(
-                        padding: EdgeInsets.all(14),
+                        padding: EdgeInsets.all(15),
                         child: CircularProgressIndicator(
                             strokeWidth: 2.2, color: Colors.white),
                       )
-                    : const Icon(Icons.send_rounded,
-                        color: Colors.white, size: 22),
+                    : Icon(
+                        _hasText ? Icons.send_rounded : Icons.mic_rounded,
+                        color: Colors.white,
+                        size: 23),
               ),
             ),
           ],
