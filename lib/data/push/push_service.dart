@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -39,11 +41,14 @@ class PushService {
       const initSettings = InitializationSettings(android: androidInit);
       await _local.initialize(initSettings);
 
-      const channel = AndroidNotificationChannel(
+      final channel = AndroidNotificationChannel(
         'kalisi_messages',
         'Messages',
         description: 'New message alerts',
         importance: Importance.high,
+        enableVibration: true,
+        vibrationPattern: Int64List.fromList([0, 220, 120, 220]),
+        playSound: true,
       );
       await _local
           .resolvePlatformSpecificImplementation<
@@ -74,6 +79,39 @@ class PushService {
       });
     } catch (_) {
       // Firebase not available (e.g. no google-services in a dev build) — ignore.
+    }
+  }
+
+  /// Show a local alert for a message that arrived while the app was polling.
+  /// Falls back to a plain vibration if notifications aren't available.
+  static Future<void> showMessage({
+    required String title,
+    required String body,
+    int? id,
+  }) async {
+    try {
+      await _local.show(
+        id ?? DateTime.now().millisecondsSinceEpoch.remainder(100000),
+        title,
+        body,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            'kalisi_messages',
+            'Messages',
+            channelDescription: 'New message alerts',
+            importance: Importance.high,
+            priority: Priority.high,
+            enableVibration: true,
+            vibrationPattern: Int64List.fromList([0, 220, 120, 220]),
+            ticker: 'New message',
+          ),
+        ),
+      );
+    } catch (_) {
+      // notifications unavailable — at least buzz
+      try {
+        HapticFeedback.vibrate();
+      } catch (_) {}
     }
   }
 

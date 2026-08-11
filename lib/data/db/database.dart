@@ -164,6 +164,15 @@ class KalisiDb extends _$KalisiDb {
   Future<void> setMyReaction(String id, String? emoji) =>
       (update(messages)..where((t) => t.id.equals(id)))
           .write(MessagesCompanion(reactionMine: Value(emoji)));
+  /// Newest message received from someone else (for alerts).
+  Future<Message?> latestIncoming(String personaId) =>
+      (select(messages)
+            ..where((t) =>
+                t.personaId.equals(personaId) & t.fromMe.equals('them'))
+            ..orderBy([(t) => OrderingTerm.desc(t.ts)])
+            ..limit(1))
+          .getSingleOrNull();
+
   Future<void> setBlocked(String contactId, bool blocked) =>
       (update(contacts)..where((t) => t.id.equals(contactId)))
           .write(ContactsCompanion(blocked: Value(blocked)));

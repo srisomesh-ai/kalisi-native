@@ -95,6 +95,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   icon: Icons.person_add_alt_1_outlined,
                   label: 'Connect',
                   active: _tab == 2,
+                  badge: ref.watch(requestsProvider).maybeWhen(
+                        data: (r) => r.length,
+                        orElse: () => 0,
+                      ),
                   onTap: () => setState(() => _tab = 2)),
               _NavItem(
                   icon: Icons.settings_outlined,
@@ -115,11 +119,13 @@ class _NavItem extends StatelessWidget {
   final String label;
   final bool active;
   final VoidCallback onTap;
+  final int badge;
   const _NavItem({
     required this.icon,
     required this.label,
     required this.active,
     required this.onTap,
+    this.badge = 0,
   });
 
   @override
@@ -141,8 +147,36 @@ class _NavItem extends StatelessWidget {
                   color: active ? KColors.tealSoft : Colors.transparent,
                   borderRadius: BorderRadius.circular(18),
                 ),
-                child: Icon(icon,
-                    color: active ? KColors.teal : s.muted, size: 23),
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Icon(icon,
+                        color: active ? KColors.teal : s.muted, size: 23),
+                    if (badge > 0)
+                      Positioned(
+                        top: -5,
+                        right: -8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 5, vertical: 1),
+                          constraints: const BoxConstraints(minWidth: 17),
+                          decoration: BoxDecoration(
+                            color: KColors.amber,
+                            borderRadius: BorderRadius.circular(9),
+                            border: Border.all(color: s.panel, width: 1.5),
+                          ),
+                          child: Text(
+                            badge > 99 ? '99+' : '$badge',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
               const SizedBox(height: 5),
               Text(label,

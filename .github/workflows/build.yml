@@ -50,13 +50,7 @@ jobs:
           echo "--- app gradle ---"; grep -nE "minSdk|compileSdk|ndkVersion|applicationId|namespace" "$GRADLE" || true
           echo "--- settings ---"; grep -iE "kotlin|android.application" android/settings.gradle.kts 2>/dev/null || true
           # Add camera + microphone + internet + notification permissions
-          MANIFEST=android/app/src/main/AndroidManifest.xml
-          if [ -f "$MANIFEST" ] && ! grep -q "RECORD_AUDIO" "$MANIFEST"; then
-            sed -i 's#<manifest\(.*\)>#<manifest\1>\n    <uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.RECORD_AUDIO"/>\n    <uses-permission android:name="android.permission.CAMERA"/>\n    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>#' "$MANIFEST"
-          fi
-          echo "--- manifest perms ---"; grep -E "uses-permission" "$MANIFEST" || true
-          # Set the visible app name to "Kalisi"
-          sed -i 's/android:label="kalisi"/android:label="Kalisi"/' "$MANIFEST" || true
+          python3 ci/patch_manifest.py android/app/src/main/AndroidManifest.xml
           # Enable core library desugaring + google-services plugin
           python3 ci/enable_desugaring.py
           # Firebase config (committed at ci/google-services.json)

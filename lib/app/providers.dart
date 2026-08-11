@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/db/database.dart';
+import '../data/push/push_service.dart';
 import '../data/api/api_client.dart';
 import '../data/repositories/auth_repository.dart';
 import '../data/repositories/message_repository.dart';
@@ -40,6 +41,9 @@ final pollerProvider = Provider<Poller>((ref) {
   return poller;
 });
 
+/// Contact id of the chat currently on screen (no alerts for it).
+final openChatIdProvider = StateProvider<String?>((ref) => null);
+
 class Poller {
   final Ref _ref;
   Timer? _timer;
@@ -56,13 +60,39 @@ class Poller {
     _timer = null;
   }
 
+  /// Pop up an alert (with vibration) for the newest arrived message,
+  /// unless that chat is already open on screen.
+  Future<void> _alert(dynamic me) async {
+    try {
+      final db = _ref.read(dbProvider);
+      final latest = await db.latestIncoming(me.id);
+      if (latest == null) return;
+      final openId = _ref.read(openChatIdProvider);
+      if (openId != null && openId == latest.contactId) return;
+
+      final contact = await db.contactById(latest.contactId);
+      final who = contact?.name ?? 'New message';
+      final body = switch (latest.kind) {
+        'img' => '📷 Photo',
+        'voice' => '🎤 Voice message',
+        _ => (latest.body ?? '').isEmpty ? 'New message' : latest.body!,
+      };
+      await PushService.showMessage(
+        title: who,
+        body: body.length > 80 ? '${body.substring(0, 80)}…' : body,
+        id: latest.contactId.hashCode,
+      );
+    } catch (_) {}
+  }
+
   Future<void> _tick() async {
     if (_busy) return;
     _busy = true;
     try {
       final me = await _ref.read(dbProvider).activePersona();
       if (me != null) {
-        await _ref.read(messageRepoProvider).poll(me);
+        final received = await _ref.read(messageRepoProvider).poll(me);
+        if (received > 0) await _alert(me);
       }
     } catch (_) {
       // network hiccups are fine; try again next tick

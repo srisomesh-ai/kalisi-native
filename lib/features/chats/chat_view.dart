@@ -43,7 +43,22 @@ class _ChatViewState extends ConsumerState<ChatView> {
   bool _previewPlaying = false;
 
   @override
+  void initState() {
+    super.initState();
+    // no alerts while this chat is on screen
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(openChatIdProvider.notifier).state = widget.contact.id;
+    });
+  }
+
+  @override
   void dispose() {
+    // safe to alert again
+    Future.microtask(() {
+      try {
+        ref.read(openChatIdProvider.notifier).state = null;
+      } catch (_) {}
+    });
     _input.dispose();
     _scroll.dispose();
     _recTicker?.cancel();
