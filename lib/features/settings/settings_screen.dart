@@ -7,6 +7,7 @@ import '../../theme/colors.dart';
 import '../../app/providers.dart';
 import '../../data/crypto/kalisi_crypto.dart';
 import '../../widgets/avatar.dart';
+import 'backup_screen.dart';
 
 /// Settings — profile, privacy, appearance, account.
 class SettingsScreen extends ConsumerWidget {
@@ -91,6 +92,14 @@ class SettingsScreen extends ConsumerWidget {
           ]),
 
           _Group(title: 'ACCOUNT', children: [
+            _Tile(
+              icon: Icons.backup_outlined,
+              title: 'Backup & restore',
+              subtitle: 'Save your account so you can get it back',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const BackupScreen(),
+              )),
+            ),
             _Tile(
               icon: Icons.badge_outlined,
               title: 'Kalisi ID',
