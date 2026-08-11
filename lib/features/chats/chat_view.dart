@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -37,6 +38,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
   DateTime? _recStart;
   Timer? _recTicker;
   int _recSecs = 0;
+  Message? _replyTo;      // message being replied to
   String? _previewPath;   // recorded clip waiting to be sent
   int _previewDur = 0;
   final _previewPlayer = AudioPlayer();
@@ -75,11 +77,17 @@ class _ChatViewState extends ConsumerState<ChatView> {
     try {
       final me = ref.read(activePersonaProvider).valueOrNull;
       if (me == null) return;
+      final replying = _replyTo;
       await ref.read(messageRepoProvider).sendText(
             me: me,
             contact: widget.contact,
             text: text,
+            replyTo: replying,
+            replyToWho: replying == null
+                ? null
+                : (replying.fromMe == 'me' ? 'You' : widget.contact.name),
           );
+      if (mounted) setState(() => _replyTo = null);
       _scrollToBottom();
     } catch (_) {
       if (mounted) {
@@ -307,15 +315,15 @@ class _ChatViewState extends ConsumerState<ChatView> {
     }
   }
 
+  /// With the reversed list, "newest" is offset 0.
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) {
-        _scroll.animateTo(
-          _scroll.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 250),
-          curve: Curves.easeOut,
-        );
-      }
+      if (!_scroll.hasClients) return;
+      _scroll.animateTo(
+        0,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOut,
+      );
     });
   }
 
@@ -399,17 +407,31 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     ),
                   );
                 }
-                WidgetsBinding.instance
-                    .addPostFrameCallback((_) => _scrollToBottom());
+                // Reversed list: index 0 is the newest, so the view always
+                // starts at the latest message and stays there.
                 return ListView.builder(
                   controller: _scroll,
+                  reverse: true,
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
                   itemCount: list.length,
-                  itemBuilder: (_, i) => _Bubble(message: list[i]),
+                  itemBuilder: (_, i) => _Bubble(
+                    message: list[list.length - 1 - i],
+                    onReply: (m) => setState(() => _replyTo = m),
+                  ),
                 );
               },
             ),
           ),
+          if (_replyTo != null && !widget.contact.pending)
+            _ReplyBar(
+              who: _replyTo!.fromMe == 'me' ? 'You' : widget.contact.name,
+              text: switch (_replyTo!.kind) {
+                'img' => '📷 Photo',
+                'voice' => '🎤 Voice message',
+                _ => _replyTo!.body ?? '',
+              },
+              onClose: () => setState(() => _replyTo = null),
+            ),
           if (widget.contact.pending)
             _PendingCard(
                 handle: widget.contact.username != null
@@ -450,7 +472,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
 class _Bubble extends ConsumerWidget {
   final Message message;
-  const _Bubble({required this.message});
+  final void Function(Message)? onReply;
+  const _Bubble({required this.message, this.onReply});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -498,6 +521,34 @@ class _Bubble extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (message.replyToId != null)
+                        Container(
+                          margin: const EdgeInsets.only(bottom: 5),
+                          padding: const EdgeInsets.fromLTRB(9, 6, 9, 6),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.05),
+                            borderRadius: BorderRadius.circular(8),
+                            border: const Border(
+                              left: BorderSide(color: KColors.teal, width: 3),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(message.replyToWho ?? '',
+                                  style: const TextStyle(
+                                      color: KColors.teal,
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700)),
+                              Text(message.replyToText ?? '',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                      color: s.muted, fontSize: 12.5)),
+                            ],
+                          ),
+                        ),
                       _content(context, s),
                       const SizedBox(height: 2),
                       Row(
@@ -554,34 +605,95 @@ class _Bubble extends ConsumerWidget {
     );
   }
 
+  /// Long-press sheet: reactions + Reply, Copy and Delete.
   void _showReactionPicker(BuildContext context, WidgetRef ref) {
     final s = KScheme.of(context);
     const emojis = ['❤️', '😂', '👍', '🔥', '😮', '🙏'];
+    final mine = message.fromMe == 'me';
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        margin: const EdgeInsets.all(16),
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-        decoration: BoxDecoration(
-          color: s.panel,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: emojis
-              .map((e) => GestureDetector(
-                    onTap: () async {
-                      Navigator.pop(ctx);
-                      await ref.read(messageRepoProvider).reactTo(
-                            ref.read(activePersonaProvider).valueOrNull!,
-                            message,
-                            e,
-                          );
-                    },
-                    child: Text(e, style: const TextStyle(fontSize: 30)),
-                  ))
-              .toList(),
+      builder: (ctx) => SafeArea(
+        child: Container(
+          margin: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: s.panel,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // reactions row
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: emojis
+                      .map((e) => GestureDetector(
+                            onTap: () async {
+                              Navigator.pop(ctx);
+                              final me =
+                                  ref.read(activePersonaProvider).valueOrNull;
+                              if (me == null) return;
+                              await ref
+                                  .read(messageRepoProvider)
+                                  .reactTo(me, message, e);
+                            },
+                            child: Text(e,
+                                style: const TextStyle(fontSize: 29)),
+                          ))
+                      .toList(),
+                ),
+              ),
+              Divider(height: 1, color: s.line),
+              ListTile(
+                leading: const Icon(Icons.reply_rounded, color: KColors.teal),
+                title: Text('Reply',
+                    style: TextStyle(color: s.text, fontSize: 15.5)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  onReply?.call(message);
+                },
+              ),
+              if ((message.body ?? '').isNotEmpty && message.kind == 'text')
+                ListTile(
+                  leading: const Icon(Icons.copy_rounded, color: KColors.teal),
+                  title: Text('Copy',
+                      style: TextStyle(color: s.text, fontSize: 15.5)),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Clipboard.setData(ClipboardData(text: message.body!));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                          content: Text('Copied'),
+                          duration: Duration(seconds: 1)),
+                    );
+                  },
+                ),
+              ListTile(
+                leading:
+                    const Icon(Icons.delete_outline_rounded, color: KColors.danger),
+                title: Text(mine ? 'Delete for everyone' : 'Delete for me',
+                    style: const TextStyle(
+                        color: KColors.danger, fontSize: 15.5)),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final me = ref.read(activePersonaProvider).valueOrNull;
+                  if (me == null) return;
+                  if (mine) {
+                    await ref
+                        .read(messageRepoProvider)
+                        .deleteForEveryone(me, message);
+                  } else {
+                    await ref.read(dbProvider).deleteMessageById(message.id);
+                  }
+                },
+              ),
+              const SizedBox(height: 6),
+            ],
+          ),
         ),
       ),
     );
@@ -1452,6 +1564,69 @@ class _PulseDotState extends State<_PulseDot>
         height: 12,
         decoration: const BoxDecoration(
             color: KColors.danger, shape: BoxShape.circle),
+      ),
+    );
+  }
+}
+
+
+/// Shows which message you're replying to, above the composer.
+class _ReplyBar extends StatelessWidget {
+  final String who;
+  final String text;
+  final VoidCallback onClose;
+  const _ReplyBar({
+    required this.who,
+    required this.text,
+    required this.onClose,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final s = KScheme.of(context);
+    return Container(
+      margin: const EdgeInsets.fromLTRB(10, 0, 10, 4),
+      padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
+      decoration: BoxDecoration(
+        color: s.panel,
+        borderRadius: BorderRadius.circular(12),
+        border: const Border(
+          left: BorderSide(color: KColors.teal, width: 3),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 4,
+            offset: const Offset(0, 1),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Replying to $who',
+                    style: const TextStyle(
+                        color: KColors.teal,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text(text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: s.muted, fontSize: 13)),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: onClose,
+            visualDensity: VisualDensity.compact,
+            icon: Icon(Icons.close_rounded, color: s.faint, size: 20),
+          ),
+        ],
       ),
     );
   }

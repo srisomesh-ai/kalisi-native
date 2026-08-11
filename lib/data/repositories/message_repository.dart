@@ -17,6 +17,8 @@ class MessageRepository {
     required Persona me,
     required Contact contact,
     required String text,
+    Message? replyTo,
+    String? replyToWho,
     bool burn = false,
     int timer = 0,
   }) async {
@@ -34,6 +36,15 @@ class MessageRepository {
       ts: ts,
       status: const Value('sending'),
       burn: Value(burn),
+      replyToId: Value(replyTo?.id),
+      replyToText: Value(replyTo == null
+          ? null
+          : switch (replyTo.kind) {
+              'img' => '📷 Photo',
+              'voice' => '🎤 Voice message',
+              _ => replyTo.body,
+            }),
+      replyToWho: Value(replyTo == null ? null : replyToWho),
     ));
 
     // Need the recipient's public key to encrypt.
@@ -52,7 +63,17 @@ class MessageRepository {
       'wave': null,
       'dur': 0,
       'burn': burn,
-      'replyTo': null,
+      'replyTo': replyTo == null
+          ? null
+          : {
+              'id': replyTo.id,
+              'who': replyToWho,
+              'text': switch (replyTo.kind) {
+                'img' => '📷 Photo',
+                'voice' => '🎤 Voice message',
+                _ => replyTo.body,
+              },
+            },
       'cid': cid,
       'ts': ts,
       'timer': timer,
@@ -176,6 +197,31 @@ class MessageRepository {
     } catch (_) {}
   }
 
+  /// Delete one of my messages here and ask the other side to remove it too.
+  Future<void> deleteForEveryone(Persona me, Message message) async {
+    await _db.deleteMessageById(message.id);
+    final contact = await _db.contactById(message.contactId);
+    if (contact?.publicJwk == null) return;
+    final obj = <String, dynamic>{
+      'kind': 'delete',
+      'id': message.id,
+      'cid': newUuid(),
+      'ts': nowMs(),
+    };
+    try {
+      final enc = await KalisiCrypto.encryptObject(
+          obj, me.privateJwk, contact!.publicJwk!);
+      await _api.send(
+        kalId: me.kalId,
+        token: me.token,
+        to: contact.kalId,
+        clientId: obj['cid'] as String,
+        iv: enc.iv,
+        blob: enc.blob,
+      );
+    } catch (_) {}
+  }
+
   Future<int> poll(Persona me) async {
     final res = await _api.fetch(kalId: me.kalId, token: me.token);
 
@@ -253,6 +299,7 @@ class MessageRepository {
         if (body == null || body.trim().isEmpty) {
           continue;
         }
+        final rep = obj['replyTo'];
         await _db.insertMessage(MessagesCompanion.insert(
           id: cid,
           contactId: contact.id,
@@ -260,6 +307,9 @@ class MessageRepository {
           fromMe: 'them',
           kind: Value(kind),
           body: Value(body),
+          replyToId: Value(rep is Map ? rep['id']?.toString() : null),
+          replyToText: Value(rep is Map ? rep['text']?.toString() : null),
+          replyToWho: Value(rep is Map ? rep['who']?.toString() : null),
           ts: (obj['ts'] is int) ? obj['ts'] as int : ts,
           status: const Value('delivered'),
           burn: Value(obj['burn'] == true),

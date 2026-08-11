@@ -103,10 +103,10 @@ class Poller {
 }
 
 /// The currently active persona (null → show onboarding).
-final activePersonaProvider = FutureProvider<Persona?>((ref) async {
-  // Rebuilds when auth state changes.
+final activePersonaProvider = StreamProvider<Persona?>((ref) {
+  // Live: any change to the persona row (name, avatar) updates every screen.
   ref.watch(authStateProvider);
-  return ref.watch(dbProvider).activePersona();
+  return ref.watch(dbProvider).watchActivePersona();
 });
 
 /// Bumped whenever auth changes (create/switch/logout) to refresh dependents.

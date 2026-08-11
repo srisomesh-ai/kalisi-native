@@ -61,6 +61,9 @@ class Messages extends Table {
   IntColumn get expireAt => integer().nullable()();
   TextColumn get reactionMine => text().nullable()();
   TextColumn get reactionTheirs => text().nullable()();
+  TextColumn get replyToId => text().nullable()();
+  TextColumn get replyToText => text().nullable()();
+  TextColumn get replyToWho => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -74,7 +77,7 @@ class KalisiDb extends _$KalisiDb {
   KalisiDb.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -88,11 +91,21 @@ class KalisiDb extends _$KalisiDb {
             await m.addColumn(personas, personas.avatar);
             await m.addColumn(contacts, contacts.avatar);
           }
+          if (from < 4) {
+            await m.addColumn(messages, messages.replyToId);
+            await m.addColumn(messages, messages.replyToText);
+            await m.addColumn(messages, messages.replyToWho);
+          }
         },
       );
 
   // ---- Personas ----
   Future<List<Persona>> allPersonas() => select(personas).get();
+  /// Live stream of the active persona (name / avatar changes flow through).
+  Stream<Persona?> watchActivePersona() =>
+      (select(personas)..where((t) => t.active.equals(true)))
+          .watchSingleOrNull();
+
   Future<Persona?> activePersona() =>
       (select(personas)..where((t) => t.active.equals(true)))
           .getSingleOrNull();
