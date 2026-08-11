@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/colors.dart';
 import '../../app/providers.dart';
 import '../../util/ids.dart';
+import 'status_viewer.dart';
 
 /// One status update from a contact (or me).
 class StatusItem {
