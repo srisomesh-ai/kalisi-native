@@ -348,7 +348,10 @@ class _StatusCard extends StatelessWidget {
         6;
 
     return GestureDetector(
-      onTap: () => _open(context, bytes),
+      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => StatusViewer(item: item),
+      )),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: Stack(

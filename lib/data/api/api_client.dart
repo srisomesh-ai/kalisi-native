@@ -177,6 +177,56 @@ class ApiClient {
         'allow_share': allowShare,
       });
 
+  /// Mark a status as viewed.
+  Future<Map<String, dynamic>> statusView({
+    required String kalId,
+    required String token,
+    required int statusId,
+  }) =>
+      call('status_view', {
+        'kal_id': kalId,
+        'token': token,
+        'status_id': statusId,
+      });
+
+  /// Who viewed my status (owner only).
+  Future<Map<String, dynamic>> statusViewers({
+    required String kalId,
+    required String token,
+    required int statusId,
+  }) =>
+      call('status_viewers', {
+        'kal_id': kalId,
+        'token': token,
+        'status_id': statusId,
+      });
+
+  /// React to a status (same emoji again clears it).
+  Future<Map<String, dynamic>> statusReact({
+    required String kalId,
+    required String token,
+    required int statusId,
+    required String emoji,
+  }) =>
+      call('status_react', {
+        'kal_id': kalId,
+        'token': token,
+        'status_id': statusId,
+        'emoji': emoji,
+      });
+
+  /// Reactions on a status.
+  Future<Map<String, dynamic>> statusReactions({
+    required String kalId,
+    required String token,
+    required int statusId,
+  }) =>
+      call('status_reactions', {
+        'kal_id': kalId,
+        'token': token,
+        'status_id': statusId,
+      });
+
   Future<Map<String, dynamic>> statusFeed({
     required String kalId,
     required String token,
