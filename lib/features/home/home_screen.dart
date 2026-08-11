@@ -40,9 +40,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       PrivacyScreen(),
     ];
 
-    return Scaffold(
-      body: SafeArea(bottom: false, child: pages[_tab]),
-      floatingActionButton: (_tab == 0)
+    return PopScope(
+      // On Status/Connect/Privacy the back button returns to Chats.
+      // Only on Chats does back leave the app.
+      canPop: _tab == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _tab != 0) {
+          setState(() => _tab = 0);
+        }
+      },
+      child: Scaffold(
+        body: SafeArea(bottom: false, child: pages[_tab]),
+        floatingActionButton: (_tab == 0)
           ? Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: FloatingActionButton(
@@ -95,6 +104,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

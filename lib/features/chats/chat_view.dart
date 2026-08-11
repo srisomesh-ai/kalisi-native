@@ -310,7 +310,13 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
     ref.listen(messagesProvider(widget.contact.id), (_, __) => _scrollToBottom());
 
-    return Scaffold(
+    return PopScope(
+      // Back first closes a recording / preview, then leaves the chat.
+      canPop: !_recording && _previewPath == null,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _cancelRecording();
+      },
+      child: Scaffold(
       resizeToAvoidBottomInset: true,
       backgroundColor: s.chatBg,
       appBar: AppBar(
@@ -413,6 +419,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
                 onVoice: _toggleRecording,
               ),
         ],
+      ),
       ),
     );
   }
@@ -882,7 +889,13 @@ class _ComposerState extends State<_Composer> {
   @override
   Widget build(BuildContext context) {
     final s = KScheme.of(context);
-    return SafeArea(
+    return PopScope(
+      // Back closes the emoji panel before leaving the chat.
+      canPop: !_emoji,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _emoji) setState(() => _emoji = false);
+      },
+      child: SafeArea(
       top: false,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1053,6 +1066,7 @@ class _ComposerState extends State<_Composer> {
               ),
             ),
         ],
+      ),
       ),
     );
   }
