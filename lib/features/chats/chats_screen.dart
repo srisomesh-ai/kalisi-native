@@ -6,6 +6,7 @@ import '../../data/db/database.dart';
 import '../../util/ids.dart';
 import '../../widgets/avatar.dart';
 import 'chat_view.dart';
+import '../contact/contact_details.dart';
 
 final chatSearchProvider = StateProvider<String>((ref) => '');
 final chatFilterProvider = StateProvider<String>((ref) => 'all');
@@ -242,11 +243,18 @@ class _ChatRow extends ConsumerWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
         child: Row(
           children: [
-            Avatar(
-              seed: contact.kalId,
-              label:
-                  contact.name.isNotEmpty ? contact.name[0].toUpperCase() : '?',
-              size: 55,
+            GestureDetector(
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => ContactDetailsScreen(contact: contact),
+              )),
+              child: Avatar(
+                seed: contact.kalId,
+                label: contact.name.isNotEmpty
+                    ? contact.name[0].toUpperCase()
+                    : '?',
+                size: 55,
+                photo: contact.avatar,
+              ),
             ),
             const SizedBox(width: 14),
             Expanded(

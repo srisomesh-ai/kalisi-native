@@ -21,6 +21,7 @@ class ContactsRepository {
       name: u['name']?.toString() ?? u['username']?.toString() ?? 'Unknown',
       // Server returns pubkey as a decoded object → re-encode to store as JWK string.
       publicJwk: u['pubkey'] == null ? null : _jsonString(u['pubkey']),
+      avatar: u['avatar']?.toString(),
     );
   }
 
@@ -45,6 +46,7 @@ class ContactsRepository {
     String? username,
     required String name,
     String? publicJwk,
+    String? avatar,
     bool verified = false,
   }) async {
     final existing = await _db.contactByKalId(me.id, kalId);
@@ -56,6 +58,7 @@ class ContactsRepository {
       username: Value(username),
       name: Value(name),
       publicJwk: Value(publicJwk),
+      avatar: avatar == null ? const Value.absent() : Value(avatar),
       verified: Value(verified),
       createdAt: Value(existing?.createdAt ?? nowMs()),
     ));
@@ -76,6 +79,7 @@ class ContactsRepository {
       username: found.username,
       name: found.name,
       publicJwk: found.publicJwk,
+      avatar: found.avatar,
       verified: status == 'accepted',
     );
     return contact;
@@ -138,11 +142,13 @@ class LookupResult {
   final String? username;
   final String name;
   final String? publicJwk;
+  final String? avatar;
   LookupResult({
     required this.kalId,
     this.username,
     required this.name,
     this.publicJwk,
+    this.avatar,
   });
 }
 

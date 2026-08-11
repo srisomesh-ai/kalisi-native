@@ -13,6 +13,7 @@ import '../../app/providers.dart';
 import '../../data/db/database.dart';
 import '../../util/ids.dart';
 import '../../widgets/avatar.dart';
+import '../contact/contact_details.dart';
 
 /// Streams messages for a given contact from the local database.
 final messagesProvider =
@@ -328,12 +329,19 @@ class _ChatViewState extends ConsumerState<ChatView> {
         shape: Border(bottom: BorderSide(color: s.line)),
         title: Row(
           children: [
-            Avatar(
-              seed: widget.contact.kalId,
-              label: widget.contact.name.isNotEmpty
-                  ? widget.contact.name[0].toUpperCase()
-                  : '?',
-              size: 42,
+            GestureDetector(
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) =>
+                    ContactDetailsScreen(contact: widget.contact),
+              )),
+              child: Avatar(
+                seed: widget.contact.kalId,
+                label: widget.contact.name.isNotEmpty
+                    ? widget.contact.name[0].toUpperCase()
+                    : '?',
+                size: 42,
+                photo: widget.contact.avatar,
+              ),
             ),
             const SizedBox(width: 11),
             Expanded(

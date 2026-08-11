@@ -164,6 +164,10 @@ class KalisiDb extends _$KalisiDb {
   Future<void> setMyReaction(String id, String? emoji) =>
       (update(messages)..where((t) => t.id.equals(id)))
           .write(MessagesCompanion(reactionMine: Value(emoji)));
+  Future<void> setBlocked(String contactId, bool blocked) =>
+      (update(contacts)..where((t) => t.id.equals(contactId)))
+          .write(ContactsCompanion(blocked: Value(blocked)));
+
   Future<void> clearMessages(String contactId) =>
       (delete(messages)..where((t) => t.contactId.equals(contactId))).go();
 
