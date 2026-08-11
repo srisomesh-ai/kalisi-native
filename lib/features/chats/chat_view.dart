@@ -92,6 +92,16 @@ class _ChatViewState extends ConsumerState<ChatView> {
     try {
       final me = ref.read(activePersonaProvider).valueOrNull;
       if (me == null) return;
+      if (widget.contact.isGroup) {
+        await ref.read(messageRepoProvider).sendGroupText(
+              me: me,
+              group: widget.contact,
+              text: text,
+            );
+        if (mounted) setState(() => _replyTo = null);
+        _scrollToBottom();
+        return;
+      }
       final replying = _replyTo;
       await ref.read(messageRepoProvider).sendText(
             me: me,

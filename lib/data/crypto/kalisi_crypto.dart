@@ -79,6 +79,41 @@ class KalisiCrypto {
   ) async =>
       encryptObjectSync(obj, myPrivateJwk, theirPublicJwk);
 
+  // ---- Shared-key (group) encryption ----
+  // A group has one random AES key, handed to each member over their
+  // pairwise-encrypted 1:1 channel. Group messages are then encrypted once
+  // with that key, which is what the server's fan-out expects.
+
+  /// A fresh random 256-bit group key, base64.
+  static String newGroupKey() => _b64(_randomBytes(32));
+
+  /// Encrypt an object with a raw base64 key.
+  static ({String iv, String blob}) encryptWithKeySync(
+    Map<String, dynamic> obj,
+    String keyB64,
+  ) {
+    final key = _unb64(keyB64);
+    final iv = _randomBytes(12);
+    final plain = Uint8List.fromList(utf8.encode(jsonEncode(obj)));
+    final cipher = GCMBlockCipher(AESEngine())
+      ..init(true, AEADParameters(KeyParameter(key), 128, iv, Uint8List(0)));
+    return (iv: _b64(iv), blob: _b64(cipher.process(plain)));
+  }
+
+  /// Decrypt an object with a raw base64 key.
+  static Map<String, dynamic> decryptWithKeySync(
+    String ivB64,
+    String blobB64,
+    String keyB64,
+  ) {
+    final key = _unb64(keyB64);
+    final cipher = GCMBlockCipher(AESEngine())
+      ..init(false,
+          AEADParameters(KeyParameter(key), 128, _unb64(ivB64), Uint8List(0)));
+    final clear = cipher.process(_unb64(blobB64));
+    return jsonDecode(utf8.decode(clear)) as Map<String, dynamic>;
+  }
+
   /// Decrypt a message from a sender. Returns the decoded JSON object.
   static Map<String, dynamic> decryptObjectSync(
     String ivB64,

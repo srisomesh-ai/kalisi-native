@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:drift/drift.dart';
 import '../db/database.dart';
 import '../api/api_client.dart';
@@ -224,6 +225,119 @@ class MessageRepository {
     } catch (_) {}
   }
 
+  /// Create a group, then hand the shared key to each member over their
+  /// own encrypted 1:1 channel (the server fans out one blob to everyone,
+  /// so the group must share a single key).
+  Future<Contact> createGroup({
+    required Persona me,
+    required String name,
+    required List<Contact> members,
+  }) async {
+    final res = await _api.groupCreate(
+      kalId: me.kalId,
+      token: me.token,
+      name: name,
+      members: members.map((c) => c.kalId).toList(),
+    );
+    final gid = res['gid']?.toString();
+    if (gid == null) throw ApiException('group_failed');
+    final memberIds = ((res['members'] as List?) ?? const [])
+        .map((e) => e.toString())
+        .toList();
+
+    final key = KalisiCrypto.newGroupKey();
+
+    // store the group locally
+    final localId = newUuid();
+    await _db.upsertContact(ContactsCompanion(
+      id: Value(localId),
+      personaId: Value(me.id),
+      kalId: Value(gid),
+      name: Value(name),
+      isGroup: const Value(true),
+      groupKey: Value(key),
+      groupMembers: Value(jsonEncode(memberIds)),
+      verified: const Value(true),
+      createdAt: Value(nowMs()),
+    ));
+
+    // give every member the key
+    for (final m in members) {
+      if (m.publicJwk == null) continue;
+      final obj = <String, dynamic>{
+        'kind': 'gkey',
+        'gid': gid,
+        'name': name,
+        'key': key,
+        'members': memberIds,
+        'cid': newUuid(),
+        'ts': nowMs(),
+      };
+      try {
+        final enc = await KalisiCrypto.encryptObject(
+            obj, me.privateJwk, m.publicJwk!);
+        await _api.send(
+          kalId: me.kalId,
+          token: me.token,
+          to: m.kalId,
+          clientId: obj['cid'] as String,
+          iv: enc.iv,
+          blob: enc.blob,
+        );
+      } catch (_) {}
+    }
+
+    return (await _db.contactById(localId))!;
+  }
+
+  /// Send a message to a group using its shared key.
+  Future<void> sendGroupText({
+    required Persona me,
+    required Contact group,
+    required String text,
+  }) async {
+    final key = group.groupKey;
+    if (key == null) throw ApiException('no_group_key');
+    final cid = newUuid();
+    final ts = nowMs();
+
+    await _db.insertMessage(MessagesCompanion.insert(
+      id: cid,
+      contactId: group.id,
+      personaId: me.id,
+      fromMe: 'me',
+      kind: const Value('text'),
+      body: Value(text),
+      ts: ts,
+      status: const Value('sending'),
+    ));
+
+    final obj = <String, dynamic>{
+      'kind': 'text',
+      'gid': group.kalId,
+      'text': text,
+      'from': me.kalId,
+      'fromName': me.name,
+      'cid': cid,
+      'ts': ts,
+    };
+    try {
+      final enc = KalisiCrypto.encryptWithKeySync(obj, key);
+      await _api.groupSend(
+        kalId: me.kalId,
+        token: me.token,
+        gid: group.kalId,
+        clientId: cid,
+        iv: enc.iv,
+        blob: enc.blob,
+      );
+      await _db.updateMessageStatus(cid, 'sent');
+    } catch (e) {
+      await _db.updateMessageStatus(cid, 'failed');
+      rethrow;
+    }
+  }
+
   /// Tell a contact we're typing (fire-and-forget, throttled by the caller).
   Future<void> sendTyping(Persona me, Contact contact) async {
     if (contact.publicJwk == null) return;
@@ -266,12 +380,58 @@ class MessageRepository {
       }
 
       try {
-        final obj = await KalisiCrypto.decryptObject(
-          iv,
-          blob,
-          me.privateJwk,
-          contact.publicJwk!,
-        );
+        Map<String, dynamic>? obj;
+        Contact? groupOf;
+
+        // Normal 1:1 message, encrypted for me alone.
+        try {
+          obj = await KalisiCrypto.decryptObject(
+            iv,
+            blob,
+            me.privateJwk,
+            contact.publicJwk!,
+          );
+        } catch (_) {
+          // Not for me pairwise — it may be a group message, which is
+          // encrypted once with the group's shared key and fanned out.
+          for (final g in await _db.groupsFor(me.id)) {
+            final key = g.groupKey;
+            if (key == null) continue;
+            try {
+              obj = KalisiCrypto.decryptWithKeySync(iv, blob, key);
+              groupOf = g;
+              break;
+            } catch (_) {}
+          }
+        }
+        if (obj == null) continue;
+
+        // Group messages are stored against the group, not the sender.
+        if (groupOf != null) {
+          final gkind = obj['kind']?.toString() ?? 'text';
+          if (gkind != 'text' && gkind != 'img' && gkind != 'voice') continue;
+          final gbody = gkind == 'img'
+              ? obj['img']?.toString()
+              : (gkind == 'voice'
+                  ? obj['audio']?.toString()
+                  : obj['text']?.toString());
+          if (gbody == null || gbody.trim().isEmpty) continue;
+          final who = obj['fromName']?.toString() ?? contact.name;
+          await _db.insertMessage(MessagesCompanion.insert(
+            id: obj['cid']?.toString() ?? newUuid(),
+            contactId: groupOf.id,
+            personaId: me.id,
+            fromMe: 'them',
+            kind: Value(gkind),
+            body: Value(gbody),
+            replyToWho: Value(who),   // shows who spoke in the group
+            ts: (obj['ts'] is int) ? obj['ts'] as int : ts,
+            status: const Value('delivered'),
+          ));
+          received++;
+          continue;
+        }
+
         final cid = obj['cid']?.toString() ?? newUuid();
         final kind = obj['kind']?.toString() ?? 'text';
 
@@ -300,6 +460,26 @@ class MessageRepository {
         if (kind == 'delete') {
           final did = obj['id']?.toString();
           if (did != null) await _db.deleteMessageById(did);
+          continue;
+        }
+        // someone added me to a group and shared its key
+        if (kind == 'gkey') {
+          final gid = obj['gid']?.toString();
+          final gkey = obj['key']?.toString();
+          if (gid != null && gkey != null) {
+            final existing = await _db.contactByKalId(me.id, gid);
+            await _db.upsertContact(ContactsCompanion(
+              id: Value(existing?.id ?? newUuid()),
+              personaId: Value(me.id),
+              kalId: Value(gid),
+              name: Value(obj['name']?.toString() ?? 'Group'),
+              isGroup: const Value(true),
+              groupKey: Value(gkey),
+              groupMembers: Value(jsonEncode(obj['members'] ?? const [])),
+              verified: const Value(true),
+              createdAt: Value(existing?.createdAt ?? nowMs()),
+            ));
+          }
           continue;
         }
         if (kind == 'typing') {

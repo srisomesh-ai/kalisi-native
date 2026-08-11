@@ -155,6 +155,45 @@ class ApiClient {
   }) =>
       call('contacts_state', {'kal_id': kalId, 'token': token});
 
+  /// Create a group on the server.
+  Future<Map<String, dynamic>> groupCreate({
+    required String kalId,
+    required String token,
+    required String name,
+    required List<String> members,
+  }) =>
+      call('group_create', {
+        'kal_id': kalId,
+        'token': token,
+        'name': name,
+        'members': members,
+      });
+
+  /// Fan a group message out to every member.
+  Future<Map<String, dynamic>> groupSend({
+    required String kalId,
+    required String token,
+    required String gid,
+    required String clientId,
+    required String iv,
+    required String blob,
+  }) =>
+      call('group_send', {
+        'kal_id': kalId,
+        'token': token,
+        'gid': gid,
+        'client_id': clientId,
+        'iv': iv,
+        'blob': blob,
+      });
+
+  Future<Map<String, dynamic>> groupInfo({
+    required String kalId,
+    required String token,
+    required String gid,
+  }) =>
+      call('group_info', {'kal_id': kalId, 'token': token, 'gid': gid});
+
   /// Current name/photo for a list of contacts.
   Future<Map<String, dynamic>> contactsProfiles({
     required String kalId,

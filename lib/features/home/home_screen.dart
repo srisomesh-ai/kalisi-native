@@ -7,6 +7,7 @@ import '../chats/chats_screen.dart';
 import '../connect/connect_screen.dart';
 import '../status/status_screen.dart';
 import '../settings/settings_screen.dart';
+import '../groups/new_group_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -55,7 +56,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           ? Padding(
               padding: const EdgeInsets.only(bottom: 6),
               child: FloatingActionButton(
-                onPressed: () => setState(() => _tab = 2), // go to Connect
+                onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => const NewGroupScreen(),
+                )),
                 backgroundColor: KColors.teal,
                 foregroundColor: Colors.white,
                 elevation: 6,

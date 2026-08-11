@@ -39,6 +39,10 @@ class Contacts extends Table {
   TextColumn get avatar => text().nullable()();   // base64 data URL
   /// True while a sent friend request has not been accepted yet.
   BoolColumn get pending => boolean().withDefault(const Constant(false))();
+  /// Group rows live alongside contacts.
+  BoolColumn get isGroup => boolean().withDefault(const Constant(false))();
+  TextColumn get groupKey => text().nullable()();      // shared AES key (b64)
+  TextColumn get groupMembers => text().nullable()();  // JSON list of KAL-ids
   IntColumn get createdAt => integer()();
 
   @override
@@ -77,7 +81,7 @@ class KalisiDb extends _$KalisiDb {
   KalisiDb.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -95,6 +99,11 @@ class KalisiDb extends _$KalisiDb {
             await m.addColumn(messages, messages.replyToId);
             await m.addColumn(messages, messages.replyToText);
             await m.addColumn(messages, messages.replyToWho);
+          }
+          if (from < 5) {
+            await m.addColumn(contacts, contacts.isGroup);
+            await m.addColumn(contacts, contacts.groupKey);
+            await m.addColumn(contacts, contacts.groupMembers);
           }
         },
       );
@@ -205,6 +214,12 @@ class KalisiDb extends _$KalisiDb {
           avatar: Value(avatar.isEmpty ? null : avatar),
         ),
       );
+
+  /// Groups this persona belongs to.
+  Future<List<Contact>> groupsFor(String personaId) =>
+      (select(contacts)
+            ..where((t) => t.personaId.equals(personaId) & t.isGroup.equals(true)))
+          .get();
 
   Future<void> setBlocked(String contactId, bool blocked) =>
       (update(contacts)..where((t) => t.id.equals(contactId)))
