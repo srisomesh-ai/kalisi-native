@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -33,12 +34,20 @@ class _ChatViewState extends ConsumerState<ChatView> {
   bool _sending = false;
   bool _recording = false;
   DateTime? _recStart;
+  Timer? _recTicker;
+  int _recSecs = 0;
+  String? _previewPath;   // recorded clip waiting to be sent
+  int _previewDur = 0;
+  final _previewPlayer = AudioPlayer();
+  bool _previewPlaying = false;
 
   @override
   void dispose() {
     _input.dispose();
     _scroll.dispose();
+    _recTicker?.cancel();
     _recorder.dispose();
+    _previewPlayer.dispose();
     super.dispose();
   }
 
@@ -134,56 +143,151 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
   Future<void> _toggleRecording() async {
     if (_recording) {
-      try {
-        final path = await _recorder.stop();
-        setState(() => _recording = false);
-        if (path == null) return;
-        setState(() => _sending = true);
-        final bytes = await File(path).readAsBytes();
-        final dataUrl = 'data:audio/m4a;base64,${base64Encode(bytes)}';
-        final me = ref.read(activePersonaProvider).valueOrNull;
-        if (me == null) return;
-        final dur = DateTime.now()
-            .difference(_recStart ?? DateTime.now())
-            .inSeconds;
-        await ref.read(messageRepoProvider).sendMedia(
-              me: me,
-              contact: widget.contact,
-              kind: 'voice',
-              dataUrl: dataUrl,
-              localPath: path,
-              durationSec: dur,
-            );
-        _scrollToBottom();
-      } catch (_) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not send voice message')),
-          );
-        }
-      } finally {
-        if (mounted) setState(() => _sending = false);
-      }
+      await _stopRecording();
     } else {
-      try {
-        if (await _recorder.hasPermission()) {
-          final dir = Directory.systemTemp.path;
-          final p = '$dir/kalisi_${nowMs()}.m4a';
-          await _recorder.start(const RecordConfig(), path: p);
-          _recStart = DateTime.now();
-          setState(() => _recording = true);
-        } else if (mounted) {
+      await _startRecording();
+    }
+  }
+
+  Future<void> _startRecording() async {
+    try {
+      if (!await _recorder.hasPermission()) {
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Microphone permission needed')),
           );
         }
-      } catch (_) {
+        return;
+      }
+      final p = '${Directory.systemTemp.path}/kalisi_rec_${nowMs()}.m4a';
+      // Small, compatible settings: AAC in m4a, mono, modest bitrate.
+      await _recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          bitRate: 32000,
+          sampleRate: 22050,
+          numChannels: 1,
+        ),
+        path: p,
+      );
+      _recStart = DateTime.now();
+      _recSecs = 0;
+      _recTicker?.cancel();
+      _recTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        setState(() => _recSecs++);
+        if (_recSecs >= 120) _stopRecording();   // cap at 2 minutes
+      });
+      setState(() => _recording = true);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not start recording')),
+        );
+      }
+    }
+  }
+
+  /// Stop and keep the clip for preview (not sent yet).
+  Future<void> _stopRecording() async {
+    _recTicker?.cancel();
+    try {
+      final path = await _recorder.stop();
+      final dur = DateTime.now()
+          .difference(_recStart ?? DateTime.now())
+          .inSeconds;
+      if (!mounted) return;
+      setState(() {
+        _recording = false;
+        _previewPath = path;
+        _previewDur = dur;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _recording = false);
+    }
+  }
+
+  /// Throw the recording away.
+  Future<void> _cancelRecording() async {
+    _recTicker?.cancel();
+    try {
+      if (_recording) await _recorder.stop();
+    } catch (_) {}
+    await _previewPlayer.stop();
+    final p = _previewPath;
+    if (p != null) {
+      try { File(p).deleteSync(); } catch (_) {}
+    }
+    if (mounted) {
+      setState(() {
+        _recording = false;
+        _previewPath = null;
+        _previewDur = 0;
+        _previewPlaying = false;
+      });
+    }
+  }
+
+  Future<void> _togglePreview() async {
+    final p = _previewPath;
+    if (p == null) return;
+    if (_previewPlaying) {
+      await _previewPlayer.pause();
+      if (mounted) setState(() => _previewPlaying = false);
+      return;
+    }
+    try {
+      await _previewPlayer.play(DeviceFileSource(p));
+      if (mounted) setState(() => _previewPlaying = true);
+      _previewPlayer.onPlayerComplete.listen((_) {
+        if (mounted) setState(() => _previewPlaying = false);
+      });
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not play the recording')),
+        );
+      }
+    }
+  }
+
+  /// Send the previewed clip.
+  Future<void> _sendVoice() async {
+    final p = _previewPath;
+    if (p == null) return;
+    await _previewPlayer.stop();
+    setState(() { _sending = true; _previewPlaying = false; });
+    try {
+      final bytes = await File(p).readAsBytes();
+      if (bytes.length > 1200000) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not start recording')),
+            const SnackBar(content: Text('Recording too long to send')),
           );
         }
+        return;
       }
+      final dataUrl = 'data:audio/mp4;base64,${base64Encode(bytes)}';
+      final me = ref.read(activePersonaProvider).valueOrNull;
+      if (me == null) return;
+      await ref.read(messageRepoProvider).sendMedia(
+            me: me,
+            contact: widget.contact,
+            kind: 'voice',
+            dataUrl: dataUrl,
+            localPath: p,
+            durationSec: _previewDur,
+          );
+      if (mounted) setState(() { _previewPath = null; _previewDur = 0; });
+      _scrollToBottom();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not send voice message')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
     }
   }
 
@@ -283,15 +387,31 @@ class _ChatViewState extends ConsumerState<ChatView> {
                     ? '@${widget.contact.username}'
                     : widget.contact.name)
           else
-            _Composer(
-              controller: _input,
-              sending: _sending,
-              recording: _recording,
-              onSend: _send,
-              onPhoto: _sendPhoto,
-              onCamera: _pickCamera,
-              onVoice: _toggleRecording,
-            ),
+            if (_recording)
+              _RecordingBar(
+                seconds: _recSecs,
+                onCancel: _cancelRecording,
+                onStop: _stopRecording,
+              )
+            else if (_previewPath != null)
+              _PreviewBar(
+                seconds: _previewDur,
+                playing: _previewPlaying,
+                sending: _sending,
+                onPlay: _togglePreview,
+                onDelete: _cancelRecording,
+                onSend: _sendVoice,
+              )
+            else
+              _Composer(
+                controller: _input,
+                sending: _sending,
+                recording: false,
+                onSend: _send,
+                onPhoto: _sendPhoto,
+                onCamera: _pickCamera,
+                onVoice: _toggleRecording,
+              ),
         ],
       ),
     );
@@ -519,6 +639,162 @@ class _VoiceContent extends StatefulWidget {
   const _VoiceContent({required this.message});
   @override
   State<_VoiceContent> createState() => _VoiceContentState();
+}
+
+class _VoiceContentState extends State<_VoiceContent> {
+  final _player = AudioPlayer();
+  bool _playing = false;
+  bool _loading = false;
+  String? _error;
+  String? _filePath;
+  Duration _pos = Duration.zero;
+  Duration _dur = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _player.onPlayerComplete.listen((_) {
+      if (mounted) setState(() { _playing = false; _pos = Duration.zero; });
+    });
+    _player.onPositionChanged.listen((p) {
+      if (mounted) setState(() => _pos = p);
+    });
+    _player.onDurationChanged.listen((d) {
+      if (mounted) setState(() => _dur = d);
+    });
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  /// Android cannot reliably play AAC/m4a from raw bytes, so write the
+  /// decoded audio to a real file once and play that.
+  Future<String?> _ensureFile() async {
+    if (_filePath != null && File(_filePath!).existsSync()) return _filePath;
+    final data = widget.message.body;
+    if (data == null || data.isEmpty) return null;
+    try {
+      final i = data.indexOf(',');
+      final b64 = i >= 0 ? data.substring(i + 1) : data;
+      final bytes = base64Decode(b64);
+      // pick the extension from the data URL when we can
+      var ext = 'm4a';
+      if (data.startsWith('data:audio/')) {
+        final mime = data.substring(11, i > 0 ? i : data.length).split(';').first;
+        if (mime.contains('mp4') || mime.contains('m4a')) ext = 'm4a';
+        else if (mime.contains('aac')) ext = 'aac';
+        else if (mime.contains('mpeg') || mime.contains('mp3')) ext = 'mp3';
+        else if (mime.contains('wav')) ext = 'wav';
+        else if (mime.contains('ogg')) ext = 'ogg';
+        else if (mime.contains('webm')) ext = 'webm';
+      }
+      final p = '${Directory.systemTemp.path}/kv_${widget.message.id}.$ext';
+      final file = File(p);
+      await file.writeAsBytes(bytes, flush: true);
+      _filePath = p;
+      return p;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _toggle() async {
+    if (_playing) {
+      await _player.pause();
+      if (mounted) setState(() => _playing = false);
+      return;
+    }
+    setState(() { _loading = true; _error = null; });
+    try {
+      final path = await _ensureFile();
+      if (path == null) {
+        setState(() { _loading = false; _error = 'Audio unavailable'; });
+        return;
+      }
+      await _player.play(DeviceFileSource(path));
+      if (mounted) setState(() { _playing = true; _loading = false; });
+    } catch (e) {
+      if (mounted) {
+        setState(() { _loading = false; _playing = false; _error = "Can't play"; });
+      }
+    }
+  }
+
+  String _fmt(Duration d) {
+    final m = d.inMinutes;
+    final sec = d.inSeconds % 60;
+    return '$m:${sec.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = KScheme.of(context);
+    final total = _dur.inMilliseconds > 0 ? _dur : Duration.zero;
+    final progress = total.inMilliseconds > 0
+        ? (_pos.inMilliseconds / total.inMilliseconds).clamp(0.0, 1.0)
+        : 0.0;
+
+    return SizedBox(
+      width: 205,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            onTap: _loading ? null : _toggle,
+            child: Container(
+              width: 38,
+              height: 38,
+              decoration: const BoxDecoration(
+                color: KColors.teal,
+                shape: BoxShape.circle,
+              ),
+              child: _loading
+                  ? const Padding(
+                      padding: EdgeInsets.all(11),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : Icon(_playing ? Icons.pause : Icons.play_arrow,
+                      color: Colors.white, size: 22),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 4,
+                    backgroundColor: s.line,
+                    valueColor:
+                        const AlwaysStoppedAnimation<Color>(KColors.teal),
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  _error ??
+                      (total.inMilliseconds > 0
+                          ? '${_fmt(_pos)} / ${_fmt(total)}'
+                          : 'Voice message'),
+                  style: TextStyle(
+                      color: _error != null ? KColors.danger : s.muted,
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w500),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _VoiceContentState extends State<_VoiceContent> {
@@ -962,6 +1238,241 @@ class _PendingCard extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+
+/// Shown while a voice message is being recorded.
+class _RecordingBar extends StatelessWidget {
+  final int seconds;
+  final VoidCallback onCancel;
+  final VoidCallback onStop;
+  const _RecordingBar({
+    required this.seconds,
+    required this.onCancel,
+    required this.onStop,
+  });
+
+  String get _t {
+    final m = seconds ~/ 60;
+    final sec = seconds % 60;
+    return '$m:${sec.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = KScheme.of(context);
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+        child: Row(
+          children: [
+            IconButton(
+              onPressed: onCancel,
+              icon: const Icon(Icons.delete_outline_rounded,
+                  color: KColors.danger, size: 26),
+              tooltip: 'Cancel',
+            ),
+            Expanded(
+              child: Container(
+                height: 50,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                decoration: BoxDecoration(
+                  color: s.panel,
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(color: KColors.danger.withOpacity(0.5)),
+                ),
+                child: Row(
+                  children: [
+                    const _PulseDot(),
+                    const SizedBox(width: 10),
+                    Text('Recording  $_t',
+                        style: TextStyle(
+                            color: s.text,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600)),
+                    const Spacer(),
+                    Text('tap ■ to stop',
+                        style: TextStyle(color: s.faint, fontSize: 12)),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 7),
+            GestureDetector(
+              onTap: onStop,
+              child: Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: KColors.danger,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: KColors.danger.withOpacity(0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.stop_rounded,
+                    color: Colors.white, size: 26),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Listen to the clip before sending it.
+class _PreviewBar extends StatelessWidget {
+  final int seconds;
+  final bool playing;
+  final bool sending;
+  final VoidCallback onPlay;
+  final VoidCallback onDelete;
+  final VoidCallback onSend;
+  const _PreviewBar({
+    required this.seconds,
+    required this.playing,
+    required this.sending,
+    required this.onPlay,
+    required this.onDelete,
+    required this.onSend,
+  });
+
+  String get _t {
+    final m = seconds ~/ 60;
+    final sec = seconds % 60;
+    return '$m:${sec.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = KScheme.of(context);
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+        child: Row(
+          children: [
+            IconButton(
+              onPressed: sending ? null : onDelete,
+              icon: const Icon(Icons.delete_outline_rounded,
+                  color: KColors.danger, size: 26),
+              tooltip: 'Delete',
+            ),
+            Expanded(
+              child: Container(
+                height: 50,
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: s.panel,
+                  borderRadius: BorderRadius.circular(26),
+                  border: Border.all(color: s.line),
+                ),
+                child: Row(
+                  children: [
+                    GestureDetector(
+                      onTap: onPlay,
+                      child: Container(
+                        width: 34,
+                        height: 34,
+                        decoration: const BoxDecoration(
+                          color: KColors.teal,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                            playing ? Icons.pause : Icons.play_arrow,
+                            color: Colors.white,
+                            size: 20),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Icon(Icons.graphic_eq_rounded, color: s.muted, size: 20),
+                    const SizedBox(width: 8),
+                    Text(_t,
+                        style: TextStyle(
+                            color: s.text,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600)),
+                    const Spacer(),
+                    Text('listen, then send',
+                        style: TextStyle(color: s.faint, fontSize: 11.5)),
+                    const SizedBox(width: 8),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 7),
+            GestureDetector(
+              onTap: sending ? null : onSend,
+              child: Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                      colors: [KColors.teal, KColors.teal2]),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: KColors.teal.withOpacity(0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+                child: sending
+                    ? const Padding(
+                        padding: EdgeInsets.all(15),
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2.2, color: Colors.white),
+                      )
+                    : const Icon(Icons.send_rounded,
+                        color: Colors.white, size: 23),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Pulsing red dot for the recording bar.
+class _PulseDot extends StatefulWidget {
+  const _PulseDot();
+  @override
+  State<_PulseDot> createState() => _PulseDotState();
+}
+
+class _PulseDotState extends State<_PulseDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 700),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween(begin: 0.25, end: 1.0).animate(_c),
+      child: Container(
+        width: 12,
+        height: 12,
+        decoration: const BoxDecoration(
+            color: KColors.danger, shape: BoxShape.circle),
       ),
     );
   }
