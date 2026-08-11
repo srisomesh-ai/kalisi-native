@@ -16,6 +16,8 @@ PERMS = [
     "android.permission.CAMERA",
     "android.permission.VIBRATE",
     "android.permission.POST_NOTIFICATIONS",
+    "android.permission.MODIFY_AUDIO_SETTINGS",
+    "android.permission.BLUETOOTH_CONNECT",
 ]
 
 # 1) permissions, right after the <manifest ...> tag

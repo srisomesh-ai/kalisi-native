@@ -11,7 +11,10 @@ class MessageRepository {
   final ApiClient _api;
   /// Called when the other side signals they're typing.
   final void Function(String contactId)? onTyping;
-  MessageRepository(this._db, this._api, {this.onTyping});
+  /// Called for call signalling (offer / answer / ice / end).
+  final void Function(Contact from, String kind, Map<String, dynamic> data)?
+      onCallSignal;
+  MessageRepository(this._db, this._api, {this.onTyping, this.onCallSignal});
 
   /// Send a text message to a contact.
   /// 1. store locally (status: sending), 2. encrypt, 3. POST to server,
@@ -462,6 +465,15 @@ class MessageRepository {
           if (did != null) await _db.deleteMessageById(did);
           continue;
         }
+        // call setup — hand straight to the call service
+        if (kind == 'call-offer' ||
+            kind == 'call-answer' ||
+            kind == 'call-ice' ||
+            kind == 'call-end') {
+          onCallSignal?.call(contact, kind, obj);
+          continue;
+        }
+
         // someone added me to a group and shared its key
         if (kind == 'gkey') {
           final gid = obj['gid']?.toString();

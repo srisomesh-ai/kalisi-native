@@ -8,6 +8,8 @@ import '../connect/connect_screen.dart';
 import '../status/status_screen.dart';
 import '../settings/settings_screen.dart';
 import '../groups/new_group_screen.dart';
+import '../call/call_screen.dart';
+import '../../data/call/call_service.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -31,9 +33,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     });
   }
 
+  bool _callScreenOpen = false;
+
   @override
   Widget build(BuildContext context) {
     final s = KScheme.of(context);
+
+    // An incoming call takes over the screen wherever we are.
+    ref.listen(callServiceProvider, (_, call) {
+      if (call.state == CallState.ringing && !_callScreenOpen) {
+        _callScreenOpen = true;
+        ref.read(pollerProvider).setFast(true);
+        Navigator.of(context)
+            .push(MaterialPageRoute(
+              fullscreenDialog: true,
+              builder: (_) => const CallScreen(),
+            ))
+            .then((_) {
+          _callScreenOpen = false;
+          ref.read(pollerProvider).setFast(false);
+        });
+      }
+    });
     final pages = const [
       ChatsScreen(),
       StatusScreen(),

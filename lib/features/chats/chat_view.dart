@@ -16,6 +16,8 @@ import '../../data/db/database.dart';
 import '../../util/ids.dart';
 import '../../widgets/avatar.dart';
 import '../contact/contact_details.dart';
+import '../call/call_screen.dart';
+import '../../data/call/call_service.dart';
 
 /// Streams messages for a given contact from the local database.
 final messagesProvider =
@@ -370,6 +372,30 @@ class _ChatViewState extends ConsumerState<ChatView> {
       backgroundColor: s.chatBg,
       appBar: AppBar(
         titleSpacing: 0,
+        actions: (widget.contact.isGroup || widget.contact.pending)
+            ? null
+            : [
+                IconButton(
+                  tooltip: 'Audio call',
+                  onPressed: () async {
+                    final me = ref.read(activePersonaProvider).valueOrNull;
+                    if (me == null) return;
+                    ref.read(pollerProvider).setFast(true);
+                    await ref
+                        .read(callServiceProvider)
+                        .startCall(me, widget.contact);
+                    if (context.mounted) {
+                      await Navigator.of(context).push(MaterialPageRoute(
+                        fullscreenDialog: true,
+                        builder: (_) => const CallScreen(),
+                      ));
+                      ref.read(pollerProvider).setFast(false);
+                    }
+                  },
+                  icon: Icon(Icons.call_rounded, color: KColors.teal),
+                ),
+                const SizedBox(width: 4),
+              ],
         backgroundColor: s.panel,
         surfaceTintColor: s.panel,
         foregroundColor: s.text,

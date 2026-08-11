@@ -22,6 +22,9 @@ dependencies:
   dio: ^5.4.3
   # QR (for Connect screen)
   qr_flutter: ^4.1.0
+  # Calling
+  flutter_webrtc: ^0.12.5
+
   # Media
   image_picker: ^1.1.2
   audioplayers: ^6.0.0

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/db/database.dart';
 import '../data/push/push_service.dart';
+import '../data/call/call_service.dart';
 import '../data/api/api_client.dart';
 import '../data/repositories/auth_repository.dart';
 import '../data/repositories/message_repository.dart';
@@ -30,6 +31,25 @@ final messageRepoProvider = Provider<MessageRepository>((ref) {
     ref.watch(apiProvider),
     onTyping: (contactId) =>
         ref.read(typingProvider.notifier).mark(contactId),
+    onCallSignal: (from, kind, data) async {
+      final call = ref.read(callServiceProvider);
+      final me = await ref.read(dbProvider).activePersona();
+      if (me == null) return;
+      switch (kind) {
+        case 'call-offer':
+          await call.onOffer(me, from, data);
+          break;
+        case 'call-answer':
+          await call.onAnswer(data);
+          break;
+        case 'call-ice':
+          await call.onCandidate(data);
+          break;
+        case 'call-end':
+          await call.onRemoteEnd(data['reason']?.toString());
+          break;
+      }
+    },
   );
 });
 
@@ -44,6 +64,11 @@ final pollerProvider = Provider<Poller>((ref) {
   final poller = Poller(ref);
   ref.onDispose(poller.stop);
   return poller;
+});
+
+/// The single active call (if any).
+final callServiceProvider = ChangeNotifierProvider<CallService>((ref) {
+  return CallService(ref.watch(dbProvider), ref.watch(apiProvider));
 });
 
 /// Who is currently typing: contactId -> when their 'typing' signal expires.
@@ -87,6 +112,15 @@ class Poller {
   void start() {
     _timer ??= Timer.periodic(const Duration(seconds: 3), (_) => _tick());
     _tick();
+  }
+
+  /// During a call, signalling needs to move quickly — poll every second.
+  void setFast(bool fast) {
+    _timer?.cancel();
+    _timer = Timer.periodic(
+      Duration(milliseconds: fast ? 900 : 3000),
+      (_) => _tick(),
+    );
   }
 
   void stop() {
