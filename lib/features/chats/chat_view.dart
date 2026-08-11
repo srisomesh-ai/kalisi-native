@@ -17,6 +17,7 @@ import '../../util/ids.dart';
 import '../../widgets/avatar.dart';
 import '../contact/contact_details.dart';
 import '../call/call_screen.dart';
+import 'reaction_overlay.dart';
 import '../../data/call/call_service.dart';
 
 /// Streams messages for a given contact from the local database.
@@ -521,13 +522,23 @@ class _ChatViewState extends ConsumerState<ChatView> {
   }
 }
 
-class _Bubble extends ConsumerWidget {
+class _Bubble extends ConsumerStatefulWidget {
   final Message message;
   final void Function(Message)? onReply;
   const _Bubble({required this.message, this.onReply});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_Bubble> createState() => _BubbleState();
+}
+
+class _BubbleState extends ConsumerState<_Bubble> {
+  final _key = GlobalKey();
+
+  Message get message => widget.message;
+  void Function(Message)? get onReply => widget.onReply;
+
+  @override
+  Widget build(BuildContext context) {
     final s = KScheme.of(context);
     final mine = message.fromMe == 'me';
     final bg = mine ? s.mine : s.theirs;
@@ -546,8 +557,9 @@ class _Bubble extends ConsumerWidget {
             clipBehavior: Clip.none,
             children: [
               GestureDetector(
-                onLongPress: () => _showReactionPicker(context, ref),
+                onLongPress: () => _openOverlay(context),
                 child: Container(
+                  key: _key,
                   constraints: BoxConstraints(
                     maxWidth: MediaQuery.of(context).size.width * 0.76,
                   ),
@@ -657,97 +669,51 @@ class _Bubble extends ConsumerWidget {
   }
 
   /// Long-press sheet: reactions + Reply, Copy and Delete.
-  void _showReactionPicker(BuildContext context, WidgetRef ref) {
-    final s = KScheme.of(context);
-    const emojis = ['❤️', '😂', '👍', '🔥', '😮', '🙏'];
+  /// Long-press: floating reaction bar over the message + actions beneath.
+  Future<void> _openOverlay(BuildContext context) async {
+    final box = _key.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return;
+    final pos = box.localToGlobal(Offset.zero);
+    final rect = Rect.fromLTWH(
+        pos.dx, pos.dy, box.size.width, box.size.height);
     final mine = message.fromMe == 'me';
 
-    showModalBottomSheet(
+    final result = await ReactionOverlay.show(
       context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => SafeArea(
-        child: Container(
-          margin: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: s.panel,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // reactions row
-              Padding(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: emojis
-                      .map((e) => GestureDetector(
-                            onTap: () async {
-                              Navigator.pop(ctx);
-                              final me =
-                                  ref.read(activePersonaProvider).valueOrNull;
-                              if (me == null) return;
-                              await ref
-                                  .read(messageRepoProvider)
-                                  .reactTo(me, message, e);
-                            },
-                            child: Text(e,
-                                style: const TextStyle(fontSize: 29)),
-                          ))
-                      .toList(),
-                ),
-              ),
-              Divider(height: 1, color: s.line),
-              ListTile(
-                leading: const Icon(Icons.reply_rounded, color: KColors.teal),
-                title: Text('Reply',
-                    style: TextStyle(color: s.text, fontSize: 15.5)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  onReply?.call(message);
-                },
-              ),
-              if ((message.body ?? '').isNotEmpty && message.kind == 'text')
-                ListTile(
-                  leading: const Icon(Icons.copy_rounded, color: KColors.teal),
-                  title: Text('Copy',
-                      style: TextStyle(color: s.text, fontSize: 15.5)),
-                  onTap: () {
-                    Navigator.pop(ctx);
-                    Clipboard.setData(ClipboardData(text: message.body!));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                          content: Text('Copied'),
-                          duration: Duration(seconds: 1)),
-                    );
-                  },
-                ),
-              ListTile(
-                leading:
-                    const Icon(Icons.delete_outline_rounded, color: KColors.danger),
-                title: Text(mine ? 'Delete for everyone' : 'Delete for me',
-                    style: const TextStyle(
-                        color: KColors.danger, fontSize: 15.5)),
-                onTap: () async {
-                  Navigator.pop(ctx);
-                  final me = ref.read(activePersonaProvider).valueOrNull;
-                  if (me == null) return;
-                  if (mine) {
-                    await ref
-                        .read(messageRepoProvider)
-                        .deleteForEveryone(me, message);
-                  } else {
-                    await ref.read(dbProvider).deleteMessageById(message.id);
-                  }
-                },
-              ),
-              const SizedBox(height: 6),
-            ],
-          ),
-        ),
-      ),
+      message: message,
+      anchor: rect,
+      mine: mine,
+      current: message.reactionMine,
     );
+    if (result == null || !context.mounted) return;
+
+    final me = ref.read(activePersonaProvider).valueOrNull;
+    if (me == null) return;
+
+    switch (result) {
+      case 'reply':
+        onReply?.call(message);
+        break;
+      case 'copy':
+        await Clipboard.setData(ClipboardData(text: message.body ?? ''));
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Copied'), duration: Duration(seconds: 1)),
+          );
+        }
+        break;
+      case 'delete':
+        if (mine) {
+          await ref.read(messageRepoProvider).deleteForEveryone(me, message);
+        } else {
+          await ref.read(dbProvider).deleteMessageById(message.id);
+        }
+        break;
+      default:
+        // anything else is an emoji reaction
+        await ref.read(messageRepoProvider).reactTo(me, message, result);
+    }
   }
 
   Widget _content(BuildContext context, KScheme s) {
