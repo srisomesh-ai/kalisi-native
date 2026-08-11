@@ -148,6 +148,20 @@ class ApiClient {
         'username': username,
       });
 
+  /// Update display name / avatar so contacts see them.
+  Future<Map<String, dynamic>> profileUpdate({
+    required String kalId,
+    required String token,
+    String? name,
+    String? avatar,
+  }) =>
+      call('profile_update', {
+        'kal_id': kalId,
+        'token': token,
+        if (name != null) 'name': name,
+        if (avatar != null) 'avatar': avatar,
+      });
+
   Future<Map<String, dynamic>> statusPost({
     required String kalId,
     required String token,

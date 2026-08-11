@@ -15,6 +15,7 @@ class Personas extends Table {
   TextColumn get token => text()(); // auth token from server
   TextColumn get privateJwk => text()();
   TextColumn get publicJwk => text()();
+  TextColumn get avatar => text().nullable()();   // base64 data URL
   BoolColumn get active => boolean().withDefault(const Constant(false))();
   IntColumn get createdAt => integer()();
 
@@ -35,6 +36,7 @@ class Contacts extends Table {
   IntColumn get timer => integer().withDefault(const Constant(0))(); // disappearing seconds
   IntColumn get lastSeen => integer().withDefault(const Constant(0))();
   TextColumn get mood => text().nullable()();
+  TextColumn get avatar => text().nullable()();   // base64 data URL
   /// True while a sent friend request has not been accepted yet.
   BoolColumn get pending => boolean().withDefault(const Constant(false))();
   IntColumn get createdAt => integer()();
@@ -72,7 +74,7 @@ class KalisiDb extends _$KalisiDb {
   KalisiDb.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -81,6 +83,10 @@ class KalisiDb extends _$KalisiDb {
           if (from < 2) {
             await m.addColumn(contacts, contacts.mood);
             await m.addColumn(contacts, contacts.pending);
+          }
+          if (from < 3) {
+            await m.addColumn(personas, personas.avatar);
+            await m.addColumn(contacts, contacts.avatar);
           }
         },
       );
@@ -92,6 +98,15 @@ class KalisiDb extends _$KalisiDb {
           .getSingleOrNull();
   Future<void> upsertPersona(PersonasCompanion p) =>
       into(personas).insertOnConflictUpdate(p);
+  /// Update my display name and/or avatar.
+  Future<void> updateProfile(String id, {String? name, String? avatar}) =>
+      (update(personas)..where((t) => t.id.equals(id))).write(
+        PersonasCompanion(
+          name: name == null ? const Value.absent() : Value(name),
+          avatar: avatar == null ? const Value.absent() : Value(avatar),
+        ),
+      );
+
   Future<void> setActivePersona(String id) async {
     await (update(personas)).write(const PersonasCompanion(active: Value(false)));
     await (update(personas)..where((t) => t.id.equals(id)))

@@ -6,7 +6,7 @@ import '../../data/push/push_service.dart';
 import '../chats/chats_screen.dart';
 import '../connect/connect_screen.dart';
 import '../status/status_screen.dart';
-import '../privacy/privacy_screen.dart';
+import '../settings/settings_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -37,7 +37,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ChatsScreen(),
       StatusScreen(),
       ConnectScreen(),
-      PrivacyScreen(),
+      SettingsScreen(),
     ];
 
     return PopScope(
@@ -97,8 +97,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   active: _tab == 2,
                   onTap: () => setState(() => _tab = 2)),
               _NavItem(
-                  icon: Icons.shield_outlined,
-                  label: 'Privacy',
+                  icon: Icons.settings_outlined,
+                  label: 'Settings',
                   active: _tab == 3,
                   onTap: () => setState(() => _tab = 3)),
             ],
