@@ -797,64 +797,6 @@ class _VoiceContentState extends State<_VoiceContent> {
   }
 }
 
-class _VoiceContentState extends State<_VoiceContent> {
-  final _player = AudioPlayer();
-  bool _playing = false;
-
-  @override
-  void dispose() {
-    _player.dispose();
-    super.dispose();
-  }
-
-  Future<void> _toggle() async {
-    if (_playing) {
-      await _player.stop();
-      setState(() => _playing = false);
-      return;
-    }
-    final data = widget.message.body;
-    if (data == null) return;
-    try {
-      final i = data.indexOf(',');
-      final b64 = i >= 0 ? data.substring(i + 1) : data;
-      final bytes = base64Decode(b64);
-      await _player.play(BytesSource(bytes));
-      setState(() => _playing = true);
-      _player.onPlayerComplete.listen((_) {
-        if (mounted) setState(() => _playing = false);
-      });
-    } catch (_) {}
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final s = KScheme.of(context);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        GestureDetector(
-          onTap: _toggle,
-          child: Container(
-            width: 36,
-            height: 36,
-            decoration: const BoxDecoration(
-              color: KColors.teal,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(_playing ? Icons.stop : Icons.play_arrow,
-                color: Colors.white, size: 22),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Icon(Icons.graphic_eq, color: s.muted, size: 22),
-        const SizedBox(width: 8),
-        Text('Voice', style: TextStyle(color: s.muted, fontSize: 13)),
-      ],
-    );
-  }
-}
-
 class _Composer extends StatefulWidget {
   final TextEditingController controller;
   final bool sending;
