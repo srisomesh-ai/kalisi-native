@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import '../../theme/colors.dart';
@@ -833,9 +834,15 @@ class _VoiceContentState extends State<_VoiceContent> {
         else if (mime.contains('ogg')) ext = 'ogg';
         else if (mime.contains('webm')) ext = 'webm';
       }
-      final p = '${Directory.systemTemp.path}/kv_${widget.message.id}.$ext';
+      // Keep media in the app's own storage so it plays offline, like WhatsApp.
+      final dir = await getApplicationDocumentsDirectory();
+      final mediaDir = Directory('${dir.path}/media');
+      if (!mediaDir.existsSync()) mediaDir.createSync(recursive: true);
+      final p = '${mediaDir.path}/kv_${widget.message.id}.$ext';
       final file = File(p);
-      await file.writeAsBytes(bytes, flush: true);
+      if (!file.existsSync()) {
+        await file.writeAsBytes(bytes, flush: true);
+      }
       _filePath = p;
       return p;
     } catch (_) {

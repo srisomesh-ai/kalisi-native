@@ -42,7 +42,7 @@ class PushService {
       await _local.initialize(initSettings);
 
       final channel = AndroidNotificationChannel(
-        'kalisi_messages',
+        'kalisi_messages_v2',
         'Messages',
         description: 'New message alerts',
         importance: Importance.high,
@@ -68,7 +68,7 @@ class PushService {
             n.body ?? 'New message',
             const NotificationDetails(
               android: AndroidNotificationDetails(
-                'kalisi_messages',
+                'kalisi_messages_v2',
                 'Messages',
                 importance: Importance.high,
                 priority: Priority.high,
@@ -96,13 +96,14 @@ class PushService {
         body,
         NotificationDetails(
           android: AndroidNotificationDetails(
-            'kalisi_messages',
+            'kalisi_messages_v2',
             'Messages',
             channelDescription: 'New message alerts',
             importance: Importance.high,
             priority: Priority.high,
             enableVibration: true,
             vibrationPattern: Int64List.fromList([0, 220, 120, 220]),
+            playSound: true,
             ticker: 'New message',
           ),
         ),
