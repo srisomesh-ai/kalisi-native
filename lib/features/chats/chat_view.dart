@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:record/record.dart';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import '../../theme/colors.dart';
 import '../../app/providers.dart';
 import '../../data/db/database.dart';
@@ -27,12 +29,16 @@ class ChatView extends ConsumerStatefulWidget {
 class _ChatViewState extends ConsumerState<ChatView> {
   final _input = TextEditingController();
   final _scroll = ScrollController();
+  final _recorder = AudioRecorder();
   bool _sending = false;
+  bool _recording = false;
+  DateTime? _recStart;
 
   @override
   void dispose() {
     _input.dispose();
     _scroll.dispose();
+    _recorder.dispose();
     super.dispose();
   }
 
@@ -123,6 +129,61 @@ class _ChatViewState extends ConsumerState<ChatView> {
     } catch (_) {
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _toggleRecording() async {
+    if (_recording) {
+      try {
+        final path = await _recorder.stop();
+        setState(() => _recording = false);
+        if (path == null) return;
+        setState(() => _sending = true);
+        final bytes = await File(path).readAsBytes();
+        final dataUrl = 'data:audio/m4a;base64,${base64Encode(bytes)}';
+        final me = ref.read(activePersonaProvider).valueOrNull;
+        if (me == null) return;
+        final dur = DateTime.now()
+            .difference(_recStart ?? DateTime.now())
+            .inSeconds;
+        await ref.read(messageRepoProvider).sendMedia(
+              me: me,
+              contact: widget.contact,
+              kind: 'voice',
+              dataUrl: dataUrl,
+              localPath: path,
+              durationSec: dur,
+            );
+        _scrollToBottom();
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not send voice message')),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _sending = false);
+      }
+    } else {
+      try {
+        if (await _recorder.hasPermission()) {
+          final dir = Directory.systemTemp.path;
+          final p = '$dir/kalisi_${nowMs()}.m4a';
+          await _recorder.start(const RecordConfig(), path: p);
+          _recStart = DateTime.now();
+          setState(() => _recording = true);
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Microphone permission needed')),
+          );
+        }
+      } catch (_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not start recording')),
+          );
+        }
+      }
     }
   }
 
@@ -225,9 +286,11 @@ class _ChatViewState extends ConsumerState<ChatView> {
             _Composer(
               controller: _input,
               sending: _sending,
+              recording: _recording,
               onSend: _send,
               onPhoto: _sendPhoto,
               onCamera: _pickCamera,
+              onVoice: _toggleRecording,
             ),
         ],
       ),
@@ -519,15 +582,19 @@ class _VoiceContentState extends State<_VoiceContent> {
 class _Composer extends StatefulWidget {
   final TextEditingController controller;
   final bool sending;
+  final bool recording;
   final VoidCallback onSend;
   final VoidCallback onPhoto;
   final VoidCallback onCamera;
+  final VoidCallback onVoice;
   const _Composer({
     required this.controller,
     required this.sending,
+    required this.recording,
     required this.onSend,
     required this.onPhoto,
     required this.onCamera,
+    required this.onVoice,
   });
 
   @override
@@ -536,6 +603,8 @@ class _Composer extends StatefulWidget {
 
 class _ComposerState extends State<_Composer> {
   bool _hasText = false;
+  bool _emoji = false;
+  final _focus = FocusNode();
 
   @override
   void initState() {
@@ -546,6 +615,7 @@ class _ComposerState extends State<_Composer> {
   @override
   void dispose() {
     widget.controller.removeListener(_onChange);
+    _focus.dispose();
     super.dispose();
   }
 
@@ -596,43 +666,67 @@ class _ComposerState extends State<_Composer> {
     final s = KScheme.of(context);
     return SafeArea(
       top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            // The rounded input pill with icons inside (WhatsApp style)
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: s.panel,
-                  borderRadius: BorderRadius.circular(26),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.06),
-                      blurRadius: 4,
-                      offset: const Offset(0, 1),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 6, 8, 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // The rounded input pill with icons inside (WhatsApp style)
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: s.panel,
+                      borderRadius: BorderRadius.circular(26),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.06),
+                          blurRadius: 4,
+                          offset: const Offset(0, 1),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    // emoji (decorative; opens keyboard emoji in practice)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 6, bottom: 2),
-                      child: Icon(Icons.emoji_emotions_outlined,
-                          color: s.faint, size: 24),
-                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        // emoji button — toggles the emoji keyboard
+                        IconButton(
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () {
+                            if (_emoji) {
+                              setState(() => _emoji = false);
+                              _focus.requestFocus();
+                            } else {
+                              FocusScope.of(context).unfocus();
+                              Future.delayed(
+                                  const Duration(milliseconds: 120), () {
+                                if (mounted) setState(() => _emoji = true);
+                              });
+                            }
+                          },
+                          icon: Icon(
+                              _emoji
+                                  ? Icons.keyboard_alt_outlined
+                                  : Icons.emoji_emotions_outlined,
+                              color: s.faint,
+                              size: 24),
+                        ),
                     Expanded(
                       child: TextField(
                         controller: widget.controller,
+                        focusNode: _focus,
                         style: TextStyle(color: s.text, fontSize: 16),
                         minLines: 1,
                         maxLines: 5,
                         textCapitalization: TextCapitalization.sentences,
+                        onTap: () {
+                          if (_emoji) setState(() => _emoji = false);
+                        },
                         decoration: InputDecoration(
-                          hintText: 'Message',
+                          hintText:
+                              widget.recording ? 'Recording…' : 'Message',
                           hintStyle: TextStyle(color: s.faint, fontSize: 16),
                           border: InputBorder.none,
                           isDense: true,
@@ -667,17 +761,22 @@ class _ComposerState extends State<_Composer> {
             GestureDetector(
               onTap: widget.sending
                   ? null
-                  : (_hasText ? widget.onSend : null),
+                  : (_hasText ? widget.onSend : widget.onVoice),
               child: Container(
                 width: 50,
                 height: 50,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                      colors: [KColors.teal, KColors.teal2]),
+                  gradient: LinearGradient(
+                      colors: widget.recording
+                          ? const [KColors.danger, Color(0xFFB93B2C)]
+                          : const [KColors.teal, KColors.teal2]),
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: KColors.teal.withOpacity(0.40),
+                      color: (widget.recording
+                              ? KColors.danger
+                              : KColors.teal)
+                          .withOpacity(0.40),
                       blurRadius: 12,
                       offset: const Offset(0, 3),
                     ),
@@ -690,13 +789,52 @@ class _ComposerState extends State<_Composer> {
                             strokeWidth: 2.2, color: Colors.white),
                       )
                     : Icon(
-                        _hasText ? Icons.send_rounded : Icons.mic_rounded,
+                        widget.recording
+                            ? Icons.stop_rounded
+                            : (_hasText
+                                ? Icons.send_rounded
+                                : Icons.mic_rounded),
                         color: Colors.white,
                         size: 23),
               ),
             ),
-          ],
-        ),
+              ],
+            ),
+          ),
+          // Emoji keyboard panel
+          if (_emoji)
+            SizedBox(
+              height: 280,
+              child: EmojiPicker(
+                onEmojiSelected: (cat, emoji) {
+                  final c = widget.controller;
+                  c.text = c.text + emoji.emoji;
+                  c.selection =
+                      TextSelection.fromPosition(
+                          TextPosition(offset: c.text.length));
+                },
+                config: Config(
+                  height: 280,
+                  emojiViewConfig: EmojiViewConfig(
+                    backgroundColor: s.panel,
+                    columns: 8,
+                    emojiSizeMax: 28,
+                  ),
+                  categoryViewConfig: CategoryViewConfig(
+                    backgroundColor: s.panel,
+                    indicatorColor: KColors.teal,
+                    iconColorSelected: KColors.teal,
+                    backspaceColor: KColors.teal,
+                  ),
+                  bottomActionBarConfig:
+                      const BottomActionBarConfig(enabled: false),
+                  searchViewConfig: SearchViewConfig(
+                    backgroundColor: s.panel,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

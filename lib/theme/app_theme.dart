@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'colors.dart';
 
+/// Theme using the device's built-in font (Roboto on Android).
+/// No runtime font downloads — text always renders, even offline.
 class AppTheme {
   static ThemeData light() => _build(false);
   static ThemeData dark() => _build(true);
@@ -9,7 +10,7 @@ class AppTheme {
   static ThemeData _build(bool dark) {
     final s = KScheme(dark);
     final base = dark ? ThemeData.dark() : ThemeData.light();
-    final textTheme = GoogleFonts.interTextTheme(base.textTheme).apply(
+    final textTheme = base.textTheme.apply(
       bodyColor: s.text,
       displayColor: s.text,
     );
@@ -17,21 +18,21 @@ class AppTheme {
     return base.copyWith(
       scaffoldBackgroundColor: s.bg,
       canvasColor: s.bg,
-      primaryColor: KColors.gold,
+      primaryColor: KColors.teal,
       textTheme: textTheme,
       colorScheme: (dark ? const ColorScheme.dark() : const ColorScheme.light())
           .copyWith(
-        primary: KColors.gold,
-        secondary: KColors.ember,
+        primary: KColors.teal,
+        secondary: KColors.amber,
         surface: s.panel,
-        error: KColors.ember,
+        error: KColors.danger,
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: s.bg,
+        backgroundColor: s.panel,
         elevation: 0,
         scrolledUnderElevation: 0,
         foregroundColor: s.text,
-        titleTextStyle: GoogleFonts.bricolageGrotesque(
+        titleTextStyle: TextStyle(
           fontWeight: FontWeight.w800,
           fontSize: 20,
           color: s.text,
@@ -40,19 +41,19 @@ class AppTheme {
       ),
       dividerColor: s.line,
       iconTheme: IconThemeData(color: s.muted),
-      splashColor: KColors.gold.withOpacity(0.08),
-      highlightColor: KColors.gold.withOpacity(0.05),
+      splashColor: KColors.teal.withOpacity(0.08),
+      highlightColor: KColors.teal.withOpacity(0.05),
     );
   }
 
-  /// Display font for big headings (matches the web's Bricolage Grotesque).
+  /// Big heading style (system font, heavy weight).
   static TextStyle display({
     required double size,
     Color? color,
     FontWeight weight = FontWeight.w800,
-    double spacing = -0.01,
+    double spacing = -0.4,
   }) =>
-      GoogleFonts.bricolageGrotesque(
+      TextStyle(
         fontSize: size,
         fontWeight: weight,
         color: color,
