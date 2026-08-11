@@ -186,6 +186,16 @@ class KalisiDb extends _$KalisiDb {
             ..limit(1))
           .getSingleOrNull();
 
+  /// Update accepted / pending flags for a contact.
+  Future<void> setContactState(String contactId,
+          {required bool verified, required bool pending}) =>
+      (update(contacts)..where((t) => t.id.equals(contactId))).write(
+        ContactsCompanion(
+          verified: Value(verified),
+          pending: Value(pending),
+        ),
+      );
+
   Future<void> setBlocked(String contactId, bool blocked) =>
       (update(contacts)..where((t) => t.id.equals(contactId)))
           .write(ContactsCompanion(blocked: Value(blocked)));

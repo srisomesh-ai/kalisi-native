@@ -41,6 +41,9 @@ final pollerProvider = Provider<Poller>((ref) {
   return poller;
 });
 
+/// Bumped by the poller so pending contact requests refresh on their own.
+final requestsTickProvider = StateProvider<int>((ref) => 0);
+
 /// Contact id of the chat currently on screen (no alerts for it).
 final openChatIdProvider = StateProvider<String?>((ref) => null);
 
@@ -48,6 +51,7 @@ class Poller {
   final Ref _ref;
   Timer? _timer;
   bool _busy = false;
+  int _ticks = 0;
   Poller(this._ref);
 
   void start() {
@@ -93,6 +97,15 @@ class Poller {
       if (me != null) {
         final received = await _ref.read(messageRepoProvider).poll(me);
         if (received > 0) await _alert(me);
+        // let pending requests (and the Connect badge) refresh
+        _ticks++;
+        if (_ticks % 2 == 0) {
+          _ref.read(requestsTickProvider.notifier).state++;
+          // unlock chats as soon as the other side accepts
+          try {
+            await _ref.read(contactsRepoProvider).syncState(me);
+          } catch (_) {}
+        }
       }
     } catch (_) {
       // network hiccups are fine; try again next tick

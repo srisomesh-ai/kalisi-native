@@ -99,6 +99,28 @@ class ContactsRepository {
     }).toList();
   }
 
+  /// Refresh which contacts are accepted, so a chat unlocks as soon as the
+  /// other person accepts (and stays locked until then).
+  Future<void> syncState(Persona me) async {
+    final res = await _api.contactsState(kalId: me.kalId, token: me.token);
+    final accepted = ((res['accepted'] as List?) ?? const [])
+        .map((e) => e.toString())
+        .toSet();
+    final pendingOut = ((res['pending_out'] as List?) ?? const [])
+        .map((e) => e.toString())
+        .toSet();
+
+    final mine = await _db.contactsFor(me.id);
+    for (final c in mine) {
+      final isAccepted = accepted.contains(c.kalId);
+      final isPending = pendingOut.contains(c.kalId);
+      if (c.verified != isAccepted || c.pending != isPending) {
+        await _db.setContactState(c.id,
+            verified: isAccepted, pending: isPending);
+      }
+    }
+  }
+
   /// Accept or reject an incoming request. On accept, store them as a contact.
   Future<void> actOnRequest(
     Persona me,

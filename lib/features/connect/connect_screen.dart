@@ -11,6 +11,7 @@ import '../../data/repositories/contacts_repository.dart';
 /// Incoming contact requests for the active persona.
 final requestsProvider = FutureProvider<List<IncomingRequest>>((ref) async {
   ref.watch(requestsRefreshProvider);
+  ref.watch(requestsTickProvider);   // refreshes every few seconds
   final me = await ref.watch(activePersonaProvider.future);
   if (me == null) return const [];
   try {

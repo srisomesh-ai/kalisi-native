@@ -148,6 +148,13 @@ class ApiClient {
         'username': username,
       });
 
+  /// Which of my contacts are accepted vs still pending my request.
+  Future<Map<String, dynamic>> contactsState({
+    required String kalId,
+    required String token,
+  }) =>
+      call('contacts_state', {'kal_id': kalId, 'token': token});
+
   /// Update display name / avatar so contacts see them.
   Future<Map<String, dynamic>> profileUpdate({
     required String kalId,
