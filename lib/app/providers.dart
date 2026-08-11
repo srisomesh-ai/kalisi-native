@@ -25,7 +25,12 @@ final authRepoProvider = Provider<AuthRepository>((ref) {
 
 /// Message repository (send/receive encrypted messages).
 final messageRepoProvider = Provider<MessageRepository>((ref) {
-  return MessageRepository(ref.watch(dbProvider), ref.watch(apiProvider));
+  return MessageRepository(
+    ref.watch(dbProvider),
+    ref.watch(apiProvider),
+    onTyping: (contactId) =>
+        ref.read(typingProvider.notifier).mark(contactId),
+  );
 });
 
 /// Contacts repository (add friend, requests).
@@ -40,6 +45,31 @@ final pollerProvider = Provider<Poller>((ref) {
   ref.onDispose(poller.stop);
   return poller;
 });
+
+/// Who is currently typing: contactId -> when their 'typing' signal expires.
+class TypingNotifier extends StateNotifier<Map<String, int>> {
+  TypingNotifier() : super(const {});
+
+  /// Someone is typing — keep it showing for a few seconds.
+  void mark(String contactId) {
+    state = {...state, contactId: DateTime.now().millisecondsSinceEpoch + 6000};
+  }
+
+  void clear(String contactId) {
+    final m = {...state}..remove(contactId);
+    state = m;
+  }
+
+  bool isTyping(String contactId) {
+    final until = state[contactId];
+    if (until == null) return false;
+    return DateTime.now().millisecondsSinceEpoch < until;
+  }
+}
+
+final typingProvider =
+    StateNotifierProvider<TypingNotifier, Map<String, int>>(
+        (ref) => TypingNotifier());
 
 /// Bumped by the poller so pending contact requests refresh on their own.
 final requestsTickProvider = StateProvider<int>((ref) => 0);
@@ -97,6 +127,17 @@ class Poller {
       if (me != null) {
         final received = await _ref.read(messageRepoProvider).poll(me);
         if (received > 0) await _alert(me);
+        // drop stale 'typing' flags so the label clears itself
+        final typing = _ref.read(typingProvider);
+        if (typing.isNotEmpty) {
+          final now = DateTime.now().millisecondsSinceEpoch;
+          for (final e in typing.entries.toList()) {
+            if (e.value <= now) {
+              _ref.read(typingProvider.notifier).clear(e.key);
+            }
+          }
+        }
+
         // let pending requests (and the Connect badge) refresh
         _ticks++;
         if (_ticks % 2 == 0) {

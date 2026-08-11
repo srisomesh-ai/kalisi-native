@@ -40,6 +40,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
   Timer? _recTicker;
   int _recSecs = 0;
   Message? _replyTo;      // message being replied to
+  int _lastTypingSent = 0;
   String? _previewPath;   // recorded clip waiting to be sent
   int _previewDur = 0;
   final _previewPlayer = AudioPlayer();
@@ -52,6 +53,18 @@ class _ChatViewState extends ConsumerState<ChatView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(openChatIdProvider.notifier).state = widget.contact.id;
     });
+    _input.addListener(_onTyping);
+  }
+
+  /// Signal 'typing' at most once every 4 seconds while text is being entered.
+  void _onTyping() {
+    if (_input.text.trim().isEmpty) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastTypingSent < 4000) return;
+    _lastTypingSent = now;
+    final me = ref.read(activePersonaProvider).valueOrNull;
+    if (me == null) return;
+    ref.read(messageRepoProvider).sendTyping(me, widget.contact);
   }
 
   @override
@@ -62,6 +75,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
         ref.read(openChatIdProvider.notifier).state = null;
       } catch (_) {}
     });
+    _input.removeListener(_onTyping);
     _input.dispose();
     _scroll.dispose();
     _recTicker?.cancel();
@@ -1215,13 +1229,23 @@ class _ComposerState extends State<_Composer> {
 }
 
 /// Line under the contact's name: mood → typing → online → last seen.
-class _PresenceLine extends StatelessWidget {
+class _PresenceLine extends ConsumerWidget {
   final Contact contact;
   const _PresenceLine({required this.contact});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final s = KScheme.of(context);
+
+    // typing beats everything else
+    ref.watch(typingProvider);
+    if (ref.read(typingProvider.notifier).isTyping(contact.id)) {
+      return const Text('typing…',
+          style: TextStyle(
+              color: Color(0xFFBFE6EC),
+              fontSize: 12,
+              fontWeight: FontWeight.w600));
+    }
 
     final mood = contact.mood;
     if (mood != null && mood.trim().isNotEmpty) {

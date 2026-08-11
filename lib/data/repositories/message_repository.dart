@@ -8,7 +8,9 @@ import '../../util/ids.dart';
 class MessageRepository {
   final KalisiDb _db;
   final ApiClient _api;
-  MessageRepository(this._db, this._api);
+  /// Called when the other side signals they're typing.
+  final void Function(String contactId)? onTyping;
+  MessageRepository(this._db, this._api, {this.onTyping});
 
   /// Send a text message to a contact.
   /// 1. store locally (status: sending), 2. encrypt, 3. POST to server,
@@ -222,6 +224,28 @@ class MessageRepository {
     } catch (_) {}
   }
 
+  /// Tell a contact we're typing (fire-and-forget, throttled by the caller).
+  Future<void> sendTyping(Persona me, Contact contact) async {
+    if (contact.publicJwk == null) return;
+    final obj = <String, dynamic>{
+      'kind': 'typing',
+      'cid': newUuid(),
+      'ts': nowMs(),
+    };
+    try {
+      final enc = await KalisiCrypto.encryptObject(
+          obj, me.privateJwk, contact.publicJwk!);
+      await _api.send(
+        kalId: me.kalId,
+        token: me.token,
+        to: contact.kalId,
+        clientId: obj['cid'] as String,
+        iv: enc.iv,
+        blob: enc.blob,
+      );
+    } catch (_) {}
+  }
+
   Future<int> poll(Persona me) async {
     final res = await _api.fetch(kalId: me.kalId, token: me.token);
 
@@ -278,7 +302,11 @@ class MessageRepository {
           if (did != null) await _db.deleteMessageById(did);
           continue;
         }
-        if (kind == 'typing' || kind == 'delivered' || kind == 'ctl') {
+        if (kind == 'typing') {
+          onTyping?.call(contact.id);
+          continue;
+        }
+        if (kind == 'delivered' || kind == 'ctl') {
           continue;
         }
         // Any non-content kind we don't recognise: skip (never show empty bubbles).
