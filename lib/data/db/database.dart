@@ -196,6 +196,16 @@ class KalisiDb extends _$KalisiDb {
         ),
       );
 
+  /// Update a contact's display name / photo from the server.
+  Future<void> setContactProfile(String contactId,
+          {required String name, required String avatar}) =>
+      (update(contacts)..where((t) => t.id.equals(contactId))).write(
+        ContactsCompanion(
+          name: Value(name),
+          avatar: Value(avatar.isEmpty ? null : avatar),
+        ),
+      );
+
   Future<void> setBlocked(String contactId, bool blocked) =>
       (update(contacts)..where((t) => t.id.equals(contactId)))
           .write(ContactsCompanion(blocked: Value(blocked)));

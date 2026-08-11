@@ -155,6 +155,18 @@ class ApiClient {
   }) =>
       call('contacts_state', {'kal_id': kalId, 'token': token});
 
+  /// Current name/photo for a list of contacts.
+  Future<Map<String, dynamic>> contactsProfiles({
+    required String kalId,
+    required String token,
+    required List<String> ids,
+  }) =>
+      call('contacts_profiles', {
+        'kal_id': kalId,
+        'token': token,
+        'ids': ids,
+      });
+
   /// Update display name / avatar so contacts see them.
   Future<Map<String, dynamic>> profileUpdate({
     required String kalId,

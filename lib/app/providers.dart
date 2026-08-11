@@ -106,6 +106,12 @@ class Poller {
             await _ref.read(contactsRepoProvider).syncState(me);
           } catch (_) {}
         }
+        // contacts' names/photos change rarely — refresh about every minute
+        if (_ticks % 20 == 0) {
+          try {
+            await _ref.read(contactsRepoProvider).syncProfiles(me);
+          } catch (_) {}
+        }
       }
     } catch (_) {
       // network hiccups are fine; try again next tick

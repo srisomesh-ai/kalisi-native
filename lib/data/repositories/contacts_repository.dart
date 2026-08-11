@@ -121,6 +121,34 @@ class ContactsRepository {
     }
   }
 
+  /// Pull contacts' current display name and photo so profile changes show up.
+  Future<void> syncProfiles(Persona me) async {
+    final mine = await _db.contactsFor(me.id);
+    if (mine.isEmpty) return;
+    final res = await _api.contactsProfiles(
+      kalId: me.kalId,
+      token: me.token,
+      ids: mine.map((c) => c.kalId).toList(),
+    );
+    final users = (res['users'] as List?) ?? const [];
+    final byId = <String, Map>{};
+    for (final u in users) {
+      if (u is Map && u['kal_id'] != null) byId[u['kal_id'].toString()] = u;
+    }
+    for (final c in mine) {
+      final u = byId[c.kalId];
+      if (u == null) continue;
+      final name = u['name']?.toString() ??
+          u['username']?.toString() ??
+          c.name;
+      final avatar = u['avatar']?.toString();
+      final avatarChanged = (avatar ?? '') != (c.avatar ?? '');
+      if (name != c.name || avatarChanged) {
+        await _db.setContactProfile(c.id, name: name, avatar: avatar ?? '');
+      }
+    }
+  }
+
   /// Accept or reject an incoming request. On accept, store them as a contact.
   Future<void> actOnRequest(
     Persona me,
