@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/db/database.dart';
 import '../data/push/push_service.dart';
@@ -141,7 +142,15 @@ class Poller {
       final latest = await db.latestIncoming(me.id);
       if (latest == null) return;
       final openId = _ref.read(openChatIdProvider);
-      if (openId != null && openId == latest.contactId) return;
+      if (openId != null && openId == latest.contactId) {
+        // Already looking at this chat: no banner, but still a soft tone
+        // so you notice the reply, the way WhatsApp does.
+        try {
+          SystemSound.play(SystemSoundType.click);
+          HapticFeedback.lightImpact();
+        } catch (_) {}
+        return;
+      }
 
       final contact = await db.contactById(latest.contactId);
       final who = contact?.name ?? 'New message';

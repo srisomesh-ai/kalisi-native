@@ -93,6 +93,11 @@ class _ChatViewState extends ConsumerState<ChatView> {
     final text = _input.text.trim();
     if (text.isEmpty || _sending) return;
     _input.clear();
+    // small confirmation tap, like WhatsApp's send pop
+    try {
+      SystemSound.play(SystemSoundType.click);
+      HapticFeedback.selectionClick();
+    } catch (_) {}
     setState(() => _sending = true);
     try {
       final me = ref.read(activePersonaProvider).valueOrNull;

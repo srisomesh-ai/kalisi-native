@@ -25,6 +25,8 @@ dependencies:
   qr_flutter: ^4.1.0
   # Calling
   flutter_webrtc: ^0.12.5
+  # Plays the device's own ringtone / notification sounds (no bundled files)
+  flutter_ringtone_player: ^4.0.0+4
 
   # Media
   image_picker: ^1.1.2

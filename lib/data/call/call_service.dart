@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:flutter_ringtone_player/flutter_ringtone_player.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:drift/drift.dart' show Value;
 import '../db/database.dart';
@@ -33,7 +33,6 @@ class CallService extends ChangeNotifier {
   String? error;
 
   RTCPeerConnection? _pc;
-  final _tone = AudioPlayer();
   Timer? _buzz;
   Timer? _dropTimer;
   Timer? _setupTimeout;
@@ -71,6 +70,9 @@ class CallService extends ChangeNotifier {
     incoming = false;
     callId = newUuid();
     _setState(CallState.calling);
+
+    // a soft repeating tone so the caller knows it's ringing
+    _startRingback();
 
     try {
       await _openMedia();
@@ -309,18 +311,29 @@ class CallService extends ChangeNotifier {
     });
     HapticFeedback.heavyImpact();
     try {
-      _tone.setReleaseMode(ReleaseMode.loop);
-      _tone.play(AssetSource('sounds/ring.mp3'), volume: 1.0);
+      // The device's own ringtone — the sound the user already knows.
+      // Respects their silent/vibrate switch.
+      FlutterRingtonePlayer().playRingtone(looping: true, asAlarm: false);
     } catch (_) {
-      // no bundled tone — vibration alone still signals the call
+      // vibration alone still signals the call
     }
+  }
+
+  /// Quiet repeating tone while we wait for them to pick up.
+  void _startRingback() {
+    _buzz?.cancel();
+    _buzz = Timer.periodic(const Duration(seconds: 3), (_) {
+      try {
+        SystemSound.play(SystemSoundType.click);
+      } catch (_) {}
+    });
   }
 
   void _stopRinging() {
     _buzz?.cancel();
     _buzz = null;
     try {
-      _tone.stop();
+      FlutterRingtonePlayer().stop();
     } catch (_) {}
   }
 
@@ -462,7 +475,6 @@ class CallService extends ChangeNotifier {
 
   @override
   void dispose() {
-    _tone.dispose();
     _cleanup();
     super.dispose();
   }
