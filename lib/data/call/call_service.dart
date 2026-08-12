@@ -35,16 +35,25 @@ class CallService extends ChangeNotifier {
   RTCPeerConnection? _pc;
   final _tone = AudioPlayer();
   Timer? _buzz;
+  Timer? _dropTimer;
+  Timer? _setupTimeout;
   MediaStream? _localStream;
   Timer? _ticker;
   final List<RTCIceCandidate> _pendingRemote = [];
+  /// Our own candidates, held until the other side can accept them.
+  final List<Map<String, dynamic>> _pendingLocal = [];
   bool _remoteDescSet = false;
+  /// True once the far end has a peer connection ready.
+  bool _peerReady = false;
 
   /// Public STUN works for most networks. TURN is needed for the rest —
   /// see RELEASE_SETUP notes; without it some calls simply cannot connect.
   static List<Map<String, dynamic>> iceServers = [
     {'urls': 'stun:stun.l.google.com:19302'},
     {'urls': 'stun:stun1.l.google.com:19302'},
+    {'urls': 'stun:stun2.l.google.com:19302'},
+    {'urls': 'stun:stun3.l.google.com:19302'},
+    {'urls': 'stun:stun.cloudflare.com:3478'},
   ];
 
   Duration get duration => connectedAt == null
@@ -77,6 +86,15 @@ class CallService extends ChangeNotifier {
         'callId': callId,
         'sdp': offer.sdp,
         'type': offer.type,
+      });
+
+      // If nothing connects within a minute, stop waiting.
+      _setupTimeout?.cancel();
+      _setupTimeout = Timer(const Duration(seconds: 60), () {
+        if (state != CallState.connected) {
+          error = 'No answer';
+          hangUp(notifyPeer: true);
+        }
       });
     } catch (e) {
       error = 'Could not start the call';
@@ -135,11 +153,14 @@ class CallService extends ChangeNotifier {
       });
       await _pc!.setLocalDescription(answer);
 
+      // We're answering, so the caller is definitely up: send freely.
+      _peerReady = true;
       await _signal('call-answer', {
         'callId': callId,
         'sdp': answer.sdp,
         'type': answer.type,
       });
+      await _flushLocal();
     } catch (_) {
       error = 'Could not connect';
       await hangUp(notifyPeer: true);
@@ -167,8 +188,23 @@ class CallService extends ChangeNotifier {
         await _pc!.addCandidate(c);
       }
       _pendingRemote.clear();
+
+      // The callee is now up — release everything we held back.
+      _peerReady = true;
+      await _flushLocal();
+
       _setState(CallState.connecting);
     } catch (_) {}
+  }
+
+  /// Send any candidates we generated before the far end was ready.
+  Future<void> _flushLocal() async {
+    if (_pendingLocal.isEmpty) return;
+    final queued = List<Map<String, dynamic>>.from(_pendingLocal);
+    _pendingLocal.clear();
+    for (final d in queued) {
+      await _signal('call-ice', d);
+    }
   }
 
   Future<void> onCandidate(Map<String, dynamic> data) async {
@@ -307,16 +343,24 @@ class CallService extends ChangeNotifier {
 
     _pc!.onIceCandidate = (c) {
       if (c.candidate == null) return;
-      _signal('call-ice', {
+      final data = {
         'callId': callId,
         'candidate': c.candidate,
         'sdpMid': c.sdpMid,
         'sdpMLineIndex': c.sdpMLineIndex,
-      });
+      };
+      // The caller produces candidates before the callee has a peer
+      // connection. Sending them then loses them, so hold until ready.
+      if (!_peerReady) {
+        _pendingLocal.add(data);
+        return;
+      }
+      _signal('call-ice', data);
     };
 
     _pc!.onConnectionState = (s) {
       if (s == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+        _dropTimer?.cancel();
         _stopRinging();
         HapticFeedback.mediumImpact();
         connectedAt ??= DateTime.now();
@@ -327,7 +371,20 @@ class CallService extends ChangeNotifier {
         hangUp(notifyPeer: true);
       } else if (s ==
           RTCPeerConnectionState.RTCPeerConnectionStateDisconnected) {
-        hangUp(notifyPeer: false);
+        // A brief drop usually recovers on its own — give it a moment
+        // before tearing the call down.
+        _dropTimer?.cancel();
+        _dropTimer = Timer(const Duration(seconds: 8), () {
+          final st = _pc?.connectionState;
+          if (st ==
+                  RTCPeerConnectionState.RTCPeerConnectionStateDisconnected ||
+              st == RTCPeerConnectionState.RTCPeerConnectionStateFailed) {
+            hangUp(notifyPeer: false);
+          }
+        });
+      } else if (s ==
+          RTCPeerConnectionState.RTCPeerConnectionStateConnecting) {
+        _setState(CallState.connecting);
       }
     };
   }
@@ -343,6 +400,10 @@ class CallService extends ChangeNotifier {
     _stopRinging();
     _ticker?.cancel();
     _ticker = null;
+    _dropTimer?.cancel();
+    _dropTimer = null;
+    _setupTimeout?.cancel();
+    _setupTimeout = null;
     try {
       _localStream?.getTracks().forEach((t) => t.stop());
       await _localStream?.dispose();
@@ -353,7 +414,9 @@ class CallService extends ChangeNotifier {
     } catch (_) {}
     _pc = null;
     _remoteDescSet = false;
+    _peerReady = false;
     _pendingRemote.clear();
+    _pendingLocal.clear();
     _pendingOffer = null;
     muted = false;
   }

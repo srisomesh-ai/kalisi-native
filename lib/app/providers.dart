@@ -119,7 +119,7 @@ class Poller {
   void setFast(bool fast) {
     _timer?.cancel();
     _timer = Timer.periodic(
-      Duration(milliseconds: fast ? 900 : 3000),
+      Duration(milliseconds: fast ? 500 : 3000),
       (_) => _tick(),
     );
   }
