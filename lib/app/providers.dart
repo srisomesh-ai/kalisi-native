@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/db/database.dart';
 import '../data/push/push_service.dart';
 import '../data/call/call_service.dart';
+import '../features/status/status_model.dart';
 import '../data/api/api_client.dart';
 import '../data/repositories/auth_repository.dart';
 import '../data/repositories/message_repository.dart';
@@ -184,6 +185,10 @@ class Poller {
           try {
             await _ref.read(contactsRepoProvider).syncState(me);
           } catch (_) {}
+        }
+        // status feed — refresh roughly every 15s so new updates just appear
+        if (_ticks % 5 == 0) {
+          _ref.read(statusRefreshProvider.notifier).state++;
         }
         // contacts' names/photos change rarely — refresh about every minute
         if (_ticks % 20 == 0) {

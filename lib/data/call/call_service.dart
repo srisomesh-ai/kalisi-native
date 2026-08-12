@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:drift/drift.dart' show Value;
 import '../db/database.dart';
 import '../api/api_client.dart';
 import '../crypto/kalisi_crypto.dart';
@@ -30,6 +33,8 @@ class CallService extends ChangeNotifier {
   String? error;
 
   RTCPeerConnection? _pc;
+  final _tone = AudioPlayer();
+  Timer? _buzz;
   MediaStream? _localStream;
   Timer? _ticker;
   final List<RTCIceCandidate> _pendingRemote = [];
@@ -100,6 +105,7 @@ class CallService extends ChangeNotifier {
     incoming = true;
     callId = data['callId']?.toString();
     _pendingOffer = data;
+    _startRinging();
     _setState(CallState.ringing);
   }
 
@@ -108,6 +114,7 @@ class CallService extends ChangeNotifier {
   Future<void> accept() async {
     final data = _pendingOffer;
     if (data == null || _me == null || peer == null) return;
+    _stopRinging();
     _setState(CallState.connecting);
     try {
       await _openMedia();
@@ -140,7 +147,9 @@ class CallService extends ChangeNotifier {
   }
 
   Future<void> decline() async {
+    _stopRinging();
     await _signal('call-end', {'callId': callId, 'reason': 'declined'});
+    await _logCall(reason: 'declined');
     await _cleanup();
     _setState(CallState.ended);
   }
@@ -180,6 +189,7 @@ class CallService extends ChangeNotifier {
   Future<void> onRemoteEnd(String? reason) async {
     if (reason == 'busy') error = 'Line busy';
     if (reason == 'declined') error = 'Call declined';
+    await _logCall(reason: reason);
     await _cleanup();
     _setState(CallState.ended);
   }
@@ -204,8 +214,39 @@ class CallService extends ChangeNotifier {
     if (notifyPeer && callId != null) {
       await _signal('call-end', {'callId': callId, 'reason': 'hangup'});
     }
+    await _logCall();
     await _cleanup();
     _setState(CallState.ended);
+  }
+
+  /// Record the call in the chat so there's a history, like WhatsApp.
+  Future<void> _logCall({String? reason}) async {
+    final me = _me;
+    final c = peer;
+    if (me == null || c == null) return;
+    final connected = connectedAt != null;
+    final secs = duration.inSeconds;
+
+    final text = connected
+        ? (secs >= 60
+            ? 'Voice call · ${secs ~/ 60} min ${secs % 60} sec'
+            : 'Voice call · $secs sec')
+        : (incoming
+            ? (reason == 'declined' ? 'Call declined' : 'Missed voice call')
+            : (reason == 'declined' ? 'Call declined' : 'No answer'));
+
+    try {
+      await _db.insertMessage(MessagesCompanion.insert(
+        id: newUuid(),
+        contactId: c.id,
+        personaId: me.id,
+        fromMe: incoming ? 'them' : 'me',
+        kind: const Value('call'),
+        body: Value(text),
+        ts: nowMs(),
+        status: const Value('delivered'),
+      ));
+    } catch (_) {}
   }
 
   /// Clear a finished call so the UI can close.
@@ -221,6 +262,31 @@ class CallService extends ChangeNotifier {
   }
 
   // ---------------- internals ----------------
+
+  /// Ring with the device's notification tone plus a repeating vibration.
+  void _startRinging() {
+    _buzz?.cancel();
+    _buzz = Timer.periodic(const Duration(milliseconds: 1600), (_) {
+      HapticFeedback.heavyImpact();
+      Future.delayed(const Duration(milliseconds: 220),
+          () => HapticFeedback.heavyImpact());
+    });
+    HapticFeedback.heavyImpact();
+    try {
+      _tone.setReleaseMode(ReleaseMode.loop);
+      _tone.play(AssetSource('sounds/ring.mp3'), volume: 1.0);
+    } catch (_) {
+      // no bundled tone — vibration alone still signals the call
+    }
+  }
+
+  void _stopRinging() {
+    _buzz?.cancel();
+    _buzz = null;
+    try {
+      _tone.stop();
+    } catch (_) {}
+  }
 
   Future<void> _openMedia() async {
     _localStream = await navigator.mediaDevices.getUserMedia({
@@ -251,6 +317,8 @@ class CallService extends ChangeNotifier {
 
     _pc!.onConnectionState = (s) {
       if (s == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
+        _stopRinging();
+        HapticFeedback.mediumImpact();
         connectedAt ??= DateTime.now();
         _startTicker();
         _setState(CallState.connected);
@@ -272,6 +340,7 @@ class CallService extends ChangeNotifier {
   }
 
   Future<void> _cleanup() async {
+    _stopRinging();
     _ticker?.cancel();
     _ticker = null;
     try {
@@ -330,6 +399,7 @@ class CallService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _tone.dispose();
     _cleanup();
     super.dispose();
   }

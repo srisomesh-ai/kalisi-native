@@ -43,6 +43,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
   Timer? _recTicker;
   int _recSecs = 0;
   Message? _replyTo;      // message being replied to
+  bool _burn = false;     // next message disappears once read
   int _lastTypingSent = 0;
   String? _previewPath;   // recorded clip waiting to be sent
   int _previewDur = 0;
@@ -110,6 +111,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
             me: me,
             contact: widget.contact,
             text: text,
+            burn: _burn,
             replyTo: replying,
             replyToWho: replying == null
                 ? null
@@ -514,6 +516,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
                 onPhoto: _sendPhoto,
                 onCamera: _pickCamera,
                 onVoice: _toggleRecording,
+                burn: _burn,
+                onBurnChanged: (v) => setState(() => _burn = v),
               ),
         ],
       ),
@@ -720,15 +724,54 @@ class _BubbleState extends ConsumerState<_Bubble> {
     }
   }
 
+  /// True when the text is just a few emoji and nothing else.
+  static bool _emojiOnly(String text) {
+    final t = text.trim();
+    if (t.isEmpty || t.length > 12) return false;
+    final noEmoji = t.replaceAll(
+        RegExp(
+            r'[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F1E6}-\u{1F1FF}\u{200D}\u{20E3}\s]',
+            unicode: true),
+        '');
+    return noEmoji.isEmpty;
+  }
+
   Widget _content(BuildContext context, KScheme s) {
+    // A disappearing message stays hidden until it's tapped, then burns.
+    if (message.burn && !message.burned && message.fromMe == 'them') {
+      return _BurnCover(message: message);
+    }
+    if (message.burned) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.local_fire_department_rounded,
+              size: 17, color: s.faint),
+          const SizedBox(width: 6),
+          Text('Message burned',
+              style: TextStyle(
+                  color: s.faint,
+                  fontSize: 14,
+                  fontStyle: FontStyle.italic)),
+        ],
+      );
+    }
     switch (message.kind) {
       case 'img':
         return _ImageContent(dataUrl: message.body);
       case 'voice':
         return _VoiceContent(message: message);
+      case 'call':
+        return _CallEntry(message: message);
       default:
-        return Text(message.body ?? '',
-            style: TextStyle(color: s.text, fontSize: 15.5, height: 1.3));
+        final body = message.body ?? '';
+        // A message that's only emoji shows bigger, like WhatsApp.
+        final big = _emojiOnly(body);
+        return Text(body,
+            style: TextStyle(
+                color: s.text,
+                fontSize: big ? 34 : 15.5,
+                height: big ? 1.15 : 1.3));
     }
   }
 }
@@ -974,6 +1017,8 @@ class _Composer extends StatefulWidget {
   final VoidCallback onPhoto;
   final VoidCallback onCamera;
   final VoidCallback onVoice;
+  final bool burn;
+  final void Function(bool) onBurnChanged;
   const _Composer({
     required this.controller,
     required this.sending,
@@ -982,6 +1027,8 @@ class _Composer extends StatefulWidget {
     required this.onPhoto,
     required this.onCamera,
     required this.onVoice,
+    required this.burn,
+    required this.onBurnChanged,
   });
 
   @override
@@ -1041,6 +1088,21 @@ class _ComposerState extends State<_Composer> {
                 widget.onCamera();
               },
             ),
+            Divider(height: 1, color: s.line),
+            SwitchListTile(
+              value: widget.burn,
+              activeColor: KColors.amber,
+              secondary: Icon(Icons.local_fire_department_rounded,
+                  color: widget.burn ? KColors.amber : s.muted),
+              title: Text('Disappearing message',
+                  style: TextStyle(color: s.text)),
+              subtitle: Text('Vanishes once they read it',
+                  style: TextStyle(color: s.muted, fontSize: 12.5)),
+              onChanged: (v) {
+                Navigator.pop(ctx);
+                widget.onBurnChanged(v);
+              },
+            ),
             const SizedBox(height: 8),
           ],
         ),
@@ -1085,6 +1147,12 @@ class _ComposerState extends State<_Composer> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         // emoji button — toggles the emoji keyboard
+                        if (widget.burn)
+                          const Padding(
+                            padding: EdgeInsets.only(left: 10, right: 2),
+                            child: Icon(Icons.local_fire_department_rounded,
+                                color: KColors.amber, size: 21),
+                          ),
                         IconButton(
                           visualDensity: VisualDensity.compact,
                           onPressed: () {
@@ -1118,8 +1186,11 @@ class _ComposerState extends State<_Composer> {
                           if (_emoji) setState(() => _emoji = false);
                         },
                         decoration: InputDecoration(
-                          hintText:
-                              widget.recording ? 'Recording…' : 'Message',
+                          hintText: widget.recording
+                              ? 'Recording…'
+                              : (widget.burn
+                                  ? 'Disappearing message'
+                                  : 'Message'),
                           hintStyle: TextStyle(color: s.faint, fontSize: 16),
                           border: InputBorder.none,
                           isDense: true,
@@ -1663,6 +1734,119 @@ class _ReplyBar extends StatelessWidget {
             visualDensity: VisualDensity.compact,
             icon: Icon(Icons.close_rounded, color: s.faint, size: 20),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+
+/// A call in the chat history — "Voice call · 39 sec" / "Missed voice call".
+class _CallEntry extends StatelessWidget {
+  final Message message;
+  const _CallEntry({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = KScheme.of(context);
+    final body = message.body ?? 'Voice call';
+    final missed = body.contains('Missed') ||
+        body.contains('No answer') ||
+        body.contains('declined');
+    final outgoing = message.fromMe == 'me';
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: missed
+                ? KColors.danger.withOpacity(0.12)
+                : KColors.tealSoft,
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            outgoing ? Icons.call_made_rounded : Icons.call_received_rounded,
+            size: 18,
+            color: missed ? KColors.danger : KColors.teal,
+          ),
+        ),
+        const SizedBox(width: 11),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              missed
+                  ? (outgoing ? 'No answer' : 'Missed voice call')
+                  : 'Voice call',
+              style: TextStyle(
+                  color: missed ? KColors.danger : s.text,
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 1),
+            Text(
+              body.contains('·') ? body.split('·').last.trim() : 'Tap to call back',
+              style: TextStyle(color: s.muted, fontSize: 12.5),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+
+/// Tap to reveal a disappearing message — it burns straight after.
+class _BurnCover extends ConsumerStatefulWidget {
+  final Message message;
+  const _BurnCover({required this.message});
+  @override
+  ConsumerState<_BurnCover> createState() => _BurnCoverState();
+}
+
+class _BurnCoverState extends ConsumerState<_BurnCover> {
+  bool _revealed = false;
+
+  Future<void> _reveal() async {
+    setState(() => _revealed = true);
+    // let them read it, then burn
+    await Future.delayed(const Duration(seconds: 6));
+    if (!mounted) return;
+    final me = ref.read(activePersonaProvider).valueOrNull;
+    await ref.read(dbProvider).markBurned(widget.message.id);
+    if (me != null) {
+      try {
+        await ref
+            .read(messageRepoProvider)
+            .notifyBurned(me, widget.message);
+      } catch (_) {}
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = KScheme.of(context);
+    if (_revealed) {
+      return Text(widget.message.body ?? '',
+          style: TextStyle(color: s.text, fontSize: 15.5, height: 1.3));
+    }
+    return GestureDetector(
+      onTap: _reveal,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.local_fire_department_rounded,
+              size: 19, color: KColors.amber),
+          const SizedBox(width: 7),
+          Text('Tap to view once',
+              style: TextStyle(
+                  color: KColors.amberInk,
+                  fontSize: 14.5,
+                  fontWeight: FontWeight.w600)),
         ],
       ),
     );

@@ -393,7 +393,12 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
           // content
           Positioned.fill(
             child: bytes != null
-                ? Center(child: Image.memory(bytes, fit: BoxFit.contain))
+                ? Container(
+                    color: Colors.black,
+                    child: Center(
+                      child: Image.memory(bytes, fit: BoxFit.contain),
+                    ),
+                  )
                 : Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -444,10 +449,13 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
           ),
 
           // progress bars
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
-              child: Row(
+          Positioned(
+            top: 0, left: 0, right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
+                child: Row(
                 children: [
                   for (var i = 0; i < widget.items.length; i++)
                     Expanded(
@@ -475,16 +483,20 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
                         ),
                       ),
                     ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
 
           // header
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 20, 12, 0),
-              child: Row(
+          Positioned(
+            top: 0, left: 0, right: 0,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(14, 20, 8, 0),
+                child: Row(
                 children: [
                   Avatar(
                     seed: item.kalId,
@@ -519,6 +531,7 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
                         color: Colors.white, size: 24),
                   ),
                 ],
+              ),
               ),
             ),
           ),

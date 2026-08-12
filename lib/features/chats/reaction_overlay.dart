@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import '../../theme/colors.dart';
@@ -55,6 +57,48 @@ class _ReactionSheet extends StatelessWidget {
     this.actionsEnabled = true,
   });
 
+  /// Small faithful preview of the message being acted on.
+  Widget _preview(KScheme s) {
+    if (message.kind == 'img') {
+      final bytes = _decode(message.body);
+      if (bytes != null) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(11),
+          child: Image.memory(bytes, fit: BoxFit.cover),
+        );
+      }
+      return Text('📷 Photo', style: TextStyle(color: s.text, fontSize: 15));
+    }
+    if (message.kind == 'voice') {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.play_arrow_rounded, color: KColors.teal, size: 22),
+          const SizedBox(width: 8),
+          Icon(Icons.graphic_eq_rounded, color: s.muted, size: 20),
+          const SizedBox(width: 8),
+          Text('Voice', style: TextStyle(color: s.muted, fontSize: 13)),
+        ],
+      );
+    }
+    return Text(
+      message.body ?? '',
+      maxLines: 4,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(color: s.text, fontSize: 15, height: 1.4),
+    );
+  }
+
+  static Uint8List? _decode(String? url) {
+    if (url == null || url.isEmpty) return null;
+    try {
+      final i = url.indexOf(',');
+      return base64Decode(i >= 0 ? url.substring(i + 1) : url);
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -87,37 +131,32 @@ class _ReactionSheet extends StatelessWidget {
           ),
 
           // the message itself, kept lit above the dim
-          if (actionsEnabled) Positioned(
-            left: anchor.left,
-            top: anchor.top,
-            width: anchor.width,
-            height: anchor.height,
-            child: IgnorePointer(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: mine ? s.mine : s.theirs,
-                  borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(15),
-                    topRight: const Radius.circular(15),
-                    bottomLeft: Radius.circular(mine ? 15 : 5),
-                    bottomRight: Radius.circular(mine ? 5 : 15),
+          if (actionsEnabled)
+            Positioned(
+              left: anchor.left,
+              top: anchor.top,
+              width: anchor.width,
+              // never taller than the real bubble, and never huge
+              height: anchor.height.clamp(0.0, 260.0),
+              child: IgnorePointer(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: mine ? s.mine : s.theirs,
+                    borderRadius: BorderRadius.only(
+                      topLeft: const Radius.circular(15),
+                      topRight: const Radius.circular(15),
+                      bottomLeft: Radius.circular(mine ? 15 : 5),
+                      bottomRight: Radius.circular(mine ? 5 : 15),
+                    ),
                   ),
-                ),
-                padding: const EdgeInsets.fromLTRB(13, 9, 13, 7),
-                alignment: Alignment.topLeft,
-                child: Text(
-                  switch (message.kind) {
-                    'img' => '📷 Photo',
-                    'voice' => '🎤 Voice message',
-                    _ => message.body ?? '',
-                  },
-                  maxLines: 4,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: s.text, fontSize: 15, height: 1.4),
+                  clipBehavior: Clip.antiAlias,
+                  padding: message.kind == 'img'
+                      ? const EdgeInsets.all(4)
+                      : const EdgeInsets.fromLTRB(13, 9, 13, 7),
+                  child: _preview(s),
                 ),
               ),
             ),
-          ),
 
           // emoji bar
           Positioned(

@@ -421,6 +421,30 @@ class MessageRepository {
     } catch (_) {}
   }
 
+  /// Tell the sender their disappearing message has been burned.
+  Future<void> notifyBurned(Persona me, Message message) async {
+    final contact = await _db.contactById(message.contactId);
+    if (contact?.publicJwk == null) return;
+    final obj = <String, dynamic>{
+      'kind': 'burned',
+      'id': message.id,
+      'cid': newUuid(),
+      'ts': nowMs(),
+    };
+    try {
+      final enc = await KalisiCrypto.encryptObject(
+          obj, me.privateJwk, contact!.publicJwk!);
+      await _api.send(
+        kalId: me.kalId,
+        token: me.token,
+        to: contact.kalId,
+        clientId: obj['cid'] as String,
+        iv: enc.iv,
+        blob: enc.blob,
+      );
+    } catch (_) {}
+  }
+
   Future<int> poll(Persona me) async {
     final res = await _api.fetch(kalId: me.kalId, token: me.token);
 
