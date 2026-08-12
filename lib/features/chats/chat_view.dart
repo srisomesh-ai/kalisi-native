@@ -15,6 +15,7 @@ import '../../app/providers.dart';
 import '../../data/db/database.dart';
 import '../../util/ids.dart';
 import '../../widgets/avatar.dart';
+import '../../widgets/linked_text.dart';
 import '../contact/contact_details.dart';
 import '../call/call_screen.dart';
 import 'reaction_overlay.dart';
@@ -767,11 +768,13 @@ class _BubbleState extends ConsumerState<_Bubble> {
         final body = message.body ?? '';
         // A message that's only emoji shows bigger, like WhatsApp.
         final big = _emojiOnly(body);
-        return Text(body,
-            style: TextStyle(
-                color: s.text,
-                fontSize: big ? 34 : 15.5,
-                height: big ? 1.15 : 1.3));
+        final st = TextStyle(
+            color: s.text,
+            fontSize: big ? 34 : 15.5,
+            height: big ? 1.15 : 1.3);
+        // big emoji never contain links, so skip the scan
+        if (big) return Text(body, style: st);
+        return LinkedText(text: body, style: st);
     }
   }
 }

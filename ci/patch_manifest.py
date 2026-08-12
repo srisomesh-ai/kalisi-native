@@ -37,7 +37,30 @@ if "EnableImpeller" not in s:
     )
     s = re.sub(r"(<application[^>]*>)", r"\1" + meta, s, count=1)
 
-# 3) app label
+# 3) let the app hand off tel:, mailto: and https: links (Android 11+ needs this)
+if "<queries>" not in s:
+    queries = """
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+            <data android:scheme="tel" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="mailto" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
+    </queries>"""
+    s = re.sub(r"(<manifest[^>]*>)", r"\1" + queries, s, count=1)
+
+# 4) app label
 s = s.replace('android:label="kalisi"', 'android:label="Kalisi"')
 
 open(path, "w").write(s)
