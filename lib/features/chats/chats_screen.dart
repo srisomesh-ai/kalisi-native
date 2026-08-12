@@ -7,6 +7,7 @@ import '../../util/ids.dart';
 import '../../widgets/avatar.dart';
 import 'chat_view.dart';
 import '../contact/contact_details.dart';
+import '../../util/mask.dart';
 
 final chatSearchProvider = StateProvider<String>((ref) => '');
 final chatFilterProvider = StateProvider<String>((ref) => 'all');
@@ -229,7 +230,7 @@ class _ChatRow extends ConsumerWidget {
         preview = switch (m.kind) {
           'img' => '📷 Photo',
           'voice' => '🎤 Voice message',
-          _ => (m.body ?? '').replaceAll('\n', ' '),
+          _ => Mask.sensitive((m.body ?? '').replaceAll('\n', ' ')),
         };
         time = fmtTime(m.ts);
       }

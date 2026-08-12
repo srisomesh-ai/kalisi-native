@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../data/db/database.dart';
 import '../data/push/push_service.dart';
 import '../data/call/call_service.dart';
+import '../util/mask.dart';
 import '../features/status/status_model.dart';
 import '../data/api/api_client.dart';
 import '../data/repositories/auth_repository.dart';
@@ -97,6 +98,9 @@ final typingProvider =
     StateNotifierProvider<TypingNotifier, Map<String, int>>(
         (ref) => TypingNotifier());
 
+/// Hide phone numbers and emails in messages. On by default, like the web.
+final maskingProvider = StateProvider<bool>((ref) => true);
+
 /// Bumped by the poller so pending contact requests refresh on their own.
 final requestsTickProvider = StateProvider<int>((ref) => 0);
 
@@ -144,7 +148,9 @@ class Poller {
       final body = switch (latest.kind) {
         'img' => '📷 Photo',
         'voice' => '🎤 Voice message',
-        _ => (latest.body ?? '').isEmpty ? 'New message' : latest.body!,
+        _ => (latest.body ?? '').isEmpty
+            ? 'New message'
+            : Mask.sensitive(latest.body!),
       };
       await PushService.showMessage(
         title: who,
