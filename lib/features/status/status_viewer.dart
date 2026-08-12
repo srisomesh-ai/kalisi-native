@@ -1,53 +1,105 @@
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../../theme/colors.dart';
 import '../../app/providers.dart';
-import '../../util/ids.dart';
+import '../../data/db/database.dart';
 import '../../widgets/avatar.dart';
-import 'status_screen.dart';
+import 'status_model.dart';
 
-/// Fullscreen status view: react, reply, and (for your own) see who viewed.
+/// Fullscreen status viewer — pages through one person's updates like stories.
 class StatusViewer extends ConsumerStatefulWidget {
-  final StatusItem item;
+  final List<StatusItem> items;
   final bool mine;
-  const StatusViewer({super.key, required this.item, this.mine = false});
+  const StatusViewer({super.key, required this.items, this.mine = false});
 
   @override
   ConsumerState<StatusViewer> createState() => _StatusViewerState();
 }
 
-class _StatusViewerState extends ConsumerState<StatusViewer> {
+class _StatusViewerState extends ConsumerState<StatusViewer>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _progress;
   final _reply = TextEditingController();
+  final _player = AudioPlayer();
+
+  int _i = 0;
+  bool _paused = false;
+  bool _sending = false;
   String? _myReaction;
   int _reactionCount = 0;
-  int _viewCount = 0;
-  bool _sending = false;
+
+  static const _perStatus = Duration(seconds: 6);
+
+  StatusItem get item => widget.items[_i];
 
   @override
   void initState() {
     super.initState();
-    _markViewed();
-    _loadReactions();
+    _progress = AnimationController(vsync: this, duration: _perStatus)
+      ..addStatusListener((s) {
+        if (s == AnimationStatus.completed) _next();
+      });
+    _open();
   }
 
   @override
   void dispose() {
+    _progress.dispose();
     _reply.dispose();
+    _player.dispose();
     super.dispose();
   }
 
-  int? get _sid => int.tryParse(widget.item.id);
+  void _open() {
+    _progress
+      ..reset()
+      ..forward();
+    _markViewed();
+    _loadReactions();
+    if (item.isVoice) _playVoice();
+  }
+
+  void _next() {
+    if (_i < widget.items.length - 1) {
+      setState(() => _i++);
+      _player.stop();
+      _open();
+    } else {
+      Navigator.of(context).maybePop();
+    }
+  }
+
+  void _prev() {
+    if (_i > 0) {
+      setState(() => _i--);
+      _player.stop();
+      _open();
+    }
+  }
+
+  void _hold(bool down) {
+    setState(() => _paused = down);
+    if (down) {
+      _progress.stop();
+    } else {
+      _progress.forward();
+    }
+  }
+
+  int? get _sid => int.tryParse(item.id);
 
   Future<void> _markViewed() async {
+    if (widget.mine) return;
     final me = ref.read(activePersonaProvider).valueOrNull;
     final sid = _sid;
-    if (me == null || sid == null || widget.mine) return;
+    if (me == null || sid == null) return;
     try {
-      await ref.read(apiProvider).statusView(
-            kalId: me.kalId,
-            token: me.token,
-            statusId: sid,
-          );
+      await ref
+          .read(apiProvider)
+          .statusView(kalId: me.kalId, token: me.token, statusId: sid);
     } catch (_) {}
   }
 
@@ -56,17 +108,27 @@ class _StatusViewerState extends ConsumerState<StatusViewer> {
     final sid = _sid;
     if (me == null || sid == null) return;
     try {
-      final res = await ref.read(apiProvider).statusReactions(
-            kalId: me.kalId,
-            token: me.token,
-            statusId: sid,
-          );
+      final res = await ref
+          .read(apiProvider)
+          .statusReactions(kalId: me.kalId, token: me.token, statusId: sid);
       if (!mounted) return;
       setState(() {
         _reactionCount = (res['count'] as num?)?.toInt() ?? 0;
-        final mine = res['mine'];
-        _myReaction = (mine == null || '$mine'.isEmpty) ? null : '$mine';
+        final mineR = res['mine'];
+        _myReaction =
+            (mineR == null || '$mineR'.isEmpty) ? null : '$mineR';
       });
+    } catch (_) {}
+  }
+
+  Future<void> _playVoice() async {
+    try {
+      final bytes = Avatar.decode(item.payload);
+      if (bytes == null) return;
+      final p = '${Directory.systemTemp.path}/kstatus_${item.id}.m4a';
+      final f = File(p);
+      if (!f.existsSync()) await f.writeAsBytes(bytes, flush: true);
+      await _player.play(DeviceFileSource(p));
     } catch (_) {}
   }
 
@@ -74,7 +136,6 @@ class _StatusViewerState extends ConsumerState<StatusViewer> {
     final me = ref.read(activePersonaProvider).valueOrNull;
     final sid = _sid;
     if (me == null || sid == null) return;
-    // optimistic
     setState(() {
       if (_myReaction == emoji) {
         _myReaction = null;
@@ -86,24 +147,28 @@ class _StatusViewerState extends ConsumerState<StatusViewer> {
     });
     try {
       await ref.read(apiProvider).statusReact(
-            kalId: me.kalId,
-            token: me.token,
-            statusId: sid,
-            emoji: emoji,
-          );
+          kalId: me.kalId, token: me.token, statusId: sid, emoji: emoji);
     } catch (_) {}
-    _loadReactions();
   }
 
-  /// Reply goes to the poster as a normal encrypted chat message.
+  /// Floating reaction picker over the status.
+  Future<void> _openReactions() async {
+    _hold(true);
+    final picked = await showDialog<String>(
+      context: context,
+      barrierColor: Colors.black38,
+      builder: (ctx) => _StatusReactionPicker(current: _myReaction),
+    );
+    _hold(false);
+    if (picked != null) await _react(picked);
+  }
+
   Future<void> _sendReply() async {
     final text = _reply.text.trim();
     if (text.isEmpty) return;
     final me = ref.read(activePersonaProvider).valueOrNull;
     if (me == null) return;
-
-    final db = ref.read(dbProvider);
-    final contact = await db.contactByKalId(me.id, widget.item.kalId);
+    final contact = await ref.read(dbProvider).contactByKalId(me.id, item.kalId);
     if (contact == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -112,51 +177,152 @@ class _StatusViewerState extends ConsumerState<StatusViewer> {
       }
       return;
     }
-
     setState(() => _sending = true);
     try {
-      final quoted = widget.item.type == 'text'
-          ? '↩ "${widget.item.payload.length > 60 ? '${widget.item.payload.substring(0, 60)}…' : widget.item.payload}"\n'
-          : '↩ (status)\n';
-      await ref.read(messageRepoProvider).sendText(
-            me: me,
-            contact: contact,
-            text: '$quoted$text',
-          );
+      final quote = item.isText
+          ? '↩ "${item.payload.length > 60 ? '${item.payload.substring(0, 60)}…' : item.payload}"\n'
+          : '↩ (${item.type} status)\n';
+      await ref
+          .read(messageRepoProvider)
+          .sendText(me: me, contact: contact, text: '$quote$text');
       _reply.clear();
       if (mounted) {
         FocusScope.of(context).unfocus();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Replied to ${widget.item.name}')),
+          SnackBar(content: Text('Replied to ${item.name}')),
         );
       }
     } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not send reply')),
-        );
-      }
     } finally {
       if (mounted) setState(() => _sending = false);
     }
   }
 
+  /// Forward this status to a contact as a chat message.
+  Future<void> _forward() async {
+    _hold(true);
+    final me = ref.read(activePersonaProvider).valueOrNull;
+    if (me == null) return;
+    final contacts = await ref.read(dbProvider).contactsFor(me.id);
+    final people = contacts.where((c) => !c.isGroup && !c.pending).toList();
+    if (!mounted) return;
+
+    final s = KScheme.of(context);
+    final chosen = await showModalBottomSheet<Contact>(
+      context: context,
+      backgroundColor: s.panel,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.forward_rounded, color: KColors.teal),
+                  const SizedBox(width: 8),
+                  Text('Send status to…',
+                      style: TextStyle(
+                          color: s.text,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700)),
+                ],
+              ),
+            ),
+            if (people.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text('No contacts yet',
+                    style: TextStyle(color: s.muted)),
+              )
+            else
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: people.length,
+                  itemBuilder: (_, i) {
+                    final c = people[i];
+                    return ListTile(
+                      leading: Avatar(
+                        seed: c.kalId,
+                        label: c.name.isNotEmpty
+                            ? c.name[0].toUpperCase()
+                            : '?',
+                        size: 42,
+                        photo: c.avatar,
+                      ),
+                      title: Text(c.name, style: TextStyle(color: s.text)),
+                      onTap: () => Navigator.pop(ctx, c),
+                    );
+                  },
+                ),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+
+    if (chosen == null) {
+      _hold(false);
+      return;
+    }
+    try {
+      final repo = ref.read(messageRepoProvider);
+      if (item.isPhoto) {
+        await repo.sendMedia(
+          me: me,
+          contact: chosen,
+          kind: 'img',
+          dataUrl: item.payload,
+        );
+      } else if (item.isVoice) {
+        await repo.sendMedia(
+          me: me,
+          contact: chosen,
+          kind: 'voice',
+          dataUrl: item.payload,
+        );
+      } else {
+        await repo.sendText(
+          me: me,
+          contact: chosen,
+          text: '↩ ${item.name}\'s status:\n${item.payload}',
+        );
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Sent to ${chosen.name}')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not send that')),
+        );
+      }
+    } finally {
+      _hold(false);
+    }
+  }
+
   Future<void> _showViewers() async {
+    _hold(true);
     final me = ref.read(activePersonaProvider).valueOrNull;
     final sid = _sid;
-    if (me == null || sid == null) return;
     List viewers = const [];
-    try {
-      final res = await ref.read(apiProvider).statusViewers(
-            kalId: me.kalId,
-            token: me.token,
-            statusId: sid,
-          );
-      viewers = (res['viewers'] as List?) ?? const [];
-    } catch (_) {}
+    if (me != null && sid != null) {
+      try {
+        final res = await ref.read(apiProvider).statusViewers(
+            kalId: me.kalId, token: me.token, statusId: sid);
+        viewers = (res['viewers'] as List?) ?? const [];
+      } catch (_) {}
+    }
     if (!mounted) return;
     final s = KScheme.of(context);
-    showModalBottomSheet(
+    await showModalBottomSheet(
       context: context,
       backgroundColor: s.panel,
       shape: const RoundedRectangleBorder(
@@ -183,8 +349,8 @@ class _StatusViewerState extends ConsumerState<StatusViewer> {
             if (viewers.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text('No views yet',
-                    style: TextStyle(color: s.muted, fontSize: 14)),
+                child:
+                    Text('No views yet', style: TextStyle(color: s.muted)),
               )
             else
               Flexible(
@@ -198,15 +364,10 @@ class _StatusViewerState extends ConsumerState<StatusViewer> {
                         'Unknown';
                     return ListTile(
                       leading: Avatar(
-                        seed: v['viewer']?.toString() ?? nm,
-                        label: nm.isNotEmpty ? nm[0].toUpperCase() : '?',
-                        size: 40,
-                      ),
+                          seed: v['viewer']?.toString() ?? nm,
+                          label: nm.isNotEmpty ? nm[0].toUpperCase() : '?',
+                          size: 40),
                       title: Text(nm, style: TextStyle(color: s.text)),
-                      subtitle: v['username'] != null
-                          ? Text('@${v['username']}',
-                              style: TextStyle(color: s.muted, fontSize: 12.5))
-                          : null,
                     );
                   },
                 ),
@@ -216,26 +377,23 @@ class _StatusViewerState extends ConsumerState<StatusViewer> {
         ),
       ),
     );
+    _hold(false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final item = widget.item;
-    final photo = item.type == 'photo' ? Avatar.decode(item.payload) : null;
+    final bytes = item.isPhoto ? Avatar.decode(item.payload) : null;
     final pair = KColors.avatarPairFor(item.kalId);
 
     return Scaffold(
       backgroundColor: Colors.black,
+      resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           // content
           Positioned.fill(
-            child: photo != null
-                ? Center(
-                    child: InteractiveViewer(
-                      child: Image.memory(photo, fit: BoxFit.contain),
-                    ),
-                  )
+            child: bytes != null
+                ? Center(child: Image.memory(bytes, fit: BoxFit.contain))
                 : Container(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -244,53 +402,121 @@ class _StatusViewerState extends ConsumerState<StatusViewer> {
                         colors: pair,
                       ),
                     ),
-                    padding: const EdgeInsets.all(32),
                     alignment: Alignment.center,
-                    child: Text(
-                      item.payload,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 24,
-                          fontWeight: FontWeight.w600,
-                          height: 1.4),
-                    ),
+                    padding: const EdgeInsets.all(34),
+                    child: item.isVoice
+                        ? const Icon(Icons.graphic_eq_rounded,
+                            color: Colors.white, size: 78)
+                        : Text(
+                            item.payload,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 23,
+                                fontWeight: FontWeight.w600,
+                                height: 1.4),
+                          ),
                   ),
           ),
 
-          // top bar
+          // tap zones: left = back, right = forward, hold = pause
+          Positioned.fill(
+            child: Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: _prev,
+                    onLongPressStart: (_) => _hold(true),
+                    onLongPressEnd: (_) => _hold(false),
+                  ),
+                ),
+                Expanded(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: _next,
+                    onLongPressStart: (_) => _hold(true),
+                    onLongPressEnd: (_) => _hold(false),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // progress bars
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 6, 14, 0),
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 0),
               child: Row(
                 children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.arrow_back,
-                        color: Colors.white, size: 24),
-                  ),
+                  for (var i = 0; i < widget.items.length; i++)
+                    Expanded(
+                      child: Container(
+                        height: 3,
+                        margin: const EdgeInsets.symmetric(horizontal: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.white24,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                        child: AnimatedBuilder(
+                          animation: _progress,
+                          builder: (_, __) => FractionallySizedBox(
+                            alignment: Alignment.centerLeft,
+                            widthFactor: i < _i
+                                ? 1.0
+                                : (i == _i ? _progress.value : 0.0),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+
+          // header
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 20, 12, 0),
+              child: Row(
+                children: [
                   Avatar(
                     seed: item.kalId,
-                    label:
-                        item.name.isNotEmpty ? item.name[0].toUpperCase() : '?',
-                    size: 38,
+                    label: item.name.isNotEmpty
+                        ? item.name[0].toUpperCase()
+                        : '?',
+                    size: 36,
                   ),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(item.name,
+                        Text(widget.mine ? 'Your status' : item.name,
                             style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w700,
-                                fontSize: 15.5)),
-                        Text(_ago(item.ts),
+                                fontSize: 14.5)),
+                        Text(
+                            widget.mine
+                                ? '${item.ago} · 👁 ${item.views}'
+                                : item.ago,
                             style: TextStyle(
-                                color: Colors.white.withOpacity(0.75),
-                                fontSize: 12)),
+                                color: Colors.white.withOpacity(0.78),
+                                fontSize: 11.5)),
                       ],
                     ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    icon: const Icon(Icons.close_rounded,
+                        color: Colors.white, size: 24),
                   ),
                 ],
               ),
@@ -304,95 +530,60 @@ class _StatusViewerState extends ConsumerState<StatusViewer> {
             bottom: 0,
             child: SafeArea(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
                 child: widget.mine
                     ? _OwnerBar(
-                        viewCount: _viewCount,
-                        reactionCount: _reactionCount,
+                        views: item.views,
+                        reactions: _reactionCount,
                         onViewers: _showViewers,
                       )
-                    : Column(
-                        mainAxisSize: MainAxisSize.min,
+                    : Row(
                         children: [
-                          // quick reactions
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: ['❤️', '😂', '👍', '🔥', '😮', '🙏']
-                                .map((e) => GestureDetector(
-                                      onTap: () => _react(e),
-                                      child: AnimatedContainer(
-                                        duration:
-                                            const Duration(milliseconds: 150),
-                                        margin: const EdgeInsets.symmetric(
-                                            horizontal: 5),
-                                        padding: const EdgeInsets.all(7),
-                                        decoration: BoxDecoration(
-                                          color: _myReaction == e
-                                              ? Colors.white24
-                                              : Colors.transparent,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: Text(e,
-                                            style: TextStyle(
-                                                fontSize:
-                                                    _myReaction == e ? 30 : 25)),
-                                      ),
-                                    ))
-                                .toList(),
-                          ),
-                          const SizedBox(height: 10),
-                          // reply box
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.16),
-                                    borderRadius: BorderRadius.circular(26),
-                                    border: Border.all(
-                                        color: Colors.white.withOpacity(0.3)),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 18),
-                                  child: TextField(
-                                    controller: _reply,
-                                    style: const TextStyle(
-                                        color: Colors.white, fontSize: 15),
-                                    decoration: const InputDecoration(
-                                      hintText: 'Reply…',
-                                      hintStyle: TextStyle(color: Colors.white70),
-                                      border: InputBorder.none,
-                                      isDense: true,
-                                      contentPadding:
-                                          EdgeInsets.symmetric(vertical: 13),
-                                    ),
-                                    onSubmitted: (_) => _sendReply(),
-                                  ),
-                                ),
+                          Expanded(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.16),
+                                borderRadius: BorderRadius.circular(26),
+                                border: Border.all(
+                                    color: Colors.white.withOpacity(0.3)),
                               ),
-                              const SizedBox(width: 8),
-                              GestureDetector(
-                                onTap: _sending ? null : _sendReply,
-                                child: Container(
-                                  width: 46,
-                                  height: 46,
-                                  decoration: const BoxDecoration(
-                                    color: KColors.teal,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: _sending
-                                      ? const Padding(
-                                          padding: EdgeInsets.all(13),
-                                          child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                              color: Colors.white),
-                                        )
-                                      : const Icon(Icons.send_rounded,
-                                          color: Colors.white, size: 20),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 18),
+                              child: TextField(
+                                controller: _reply,
+                                style: const TextStyle(
+                                    color: Colors.white, fontSize: 15),
+                                onTap: () => _hold(true),
+                                decoration: InputDecoration(
+                                  hintText: 'Reply to ${item.name}…',
+                                  hintStyle:
+                                      const TextStyle(color: Colors.white70),
+                                  border: InputBorder.none,
+                                  isDense: true,
+                                  contentPadding:
+                                      const EdgeInsets.symmetric(vertical: 13),
                                 ),
+                                onSubmitted: (_) => _sendReply(),
                               ),
-                            ],
+                            ),
                           ),
+                          const SizedBox(width: 8),
+                          // reactions
+                          _CircleBtn(
+                            icon: Icons.emoji_emotions_outlined,
+                            badge: _myReaction,
+                            onTap: _openReactions,
+                          ),
+                          const SizedBox(width: 8),
+                          _CircleBtn(
+                            icon: _sending
+                                ? Icons.hourglass_empty_rounded
+                                : Icons.send_rounded,
+                            onTap: _sending ? null : _sendReply,
+                          ),
+                          const SizedBox(width: 8),
+                          _CircleBtn(
+                              icon: Icons.forward_rounded, onTap: _forward),
                         ],
                       ),
               ),
@@ -402,25 +593,55 @@ class _StatusViewerState extends ConsumerState<StatusViewer> {
       ),
     );
   }
+}
 
-  static String _ago(int ts) {
-    final d = DateTime.now()
-        .difference(DateTime.fromMillisecondsSinceEpoch(ts));
-    if (d.inMinutes < 1) return 'just now';
-    if (d.inMinutes < 60) return '${d.inMinutes} min ago';
-    if (d.inHours < 24) return '${d.inHours} h ago';
-    return '${d.inDays} d ago';
+class _CircleBtn extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback? onTap;
+  final String? badge;
+  const _CircleBtn({required this.icon, this.onTap, this.badge});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.18),
+              shape: BoxShape.circle,
+              border: Border.all(color: Colors.white.withOpacity(0.3)),
+            ),
+            child: Icon(icon, color: Colors.white, size: 21),
+          ),
+          if (badge != null)
+            Positioned(
+              right: -2,
+              top: -2,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: const BoxDecoration(
+                    color: Colors.white, shape: BoxShape.circle),
+                child: Text(badge!, style: const TextStyle(fontSize: 13)),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 }
 
-/// Bottom bar shown on your own status: views + reactions.
 class _OwnerBar extends StatelessWidget {
-  final int viewCount;
-  final int reactionCount;
+  final int views;
+  final int reactions;
   final VoidCallback onViewers;
   const _OwnerBar({
-    required this.viewCount,
-    required this.reactionCount,
+    required this.views,
+    required this.reactions,
     required this.onViewers,
   });
 
@@ -429,29 +650,115 @@ class _OwnerBar extends StatelessWidget {
     return GestureDetector(
       onTap: onViewers,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
           color: Colors.white.withOpacity(0.16),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: Colors.white.withOpacity(0.28)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Icon(Icons.visibility_outlined,
-                color: Colors.white, size: 20),
+                color: Colors.white, size: 19),
             const SizedBox(width: 8),
-            const Text('See who viewed',
-                style: TextStyle(
+            Text('$views viewers',
+                style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 15,
+                    fontSize: 14.5,
                     fontWeight: FontWeight.w600)),
-            if (reactionCount > 0) ...[
-              const SizedBox(width: 14),
-              Text('❤ $reactionCount',
-                  style: const TextStyle(color: Colors.white, fontSize: 14)),
+            if (reactions > 0) ...[
+              const SizedBox(width: 16),
+              Text('❤ $reactions',
+                  style:
+                      const TextStyle(color: Colors.white, fontSize: 14)),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Small floating reaction bar for statuses, with the same rise animation.
+class _StatusReactionPicker extends StatefulWidget {
+  final String? current;
+  const _StatusReactionPicker({this.current});
+  @override
+  State<_StatusReactionPicker> createState() => _StatusReactionPickerState();
+}
+
+class _StatusReactionPickerState extends State<_StatusReactionPicker>
+    with SingleTickerProviderStateMixin {
+  static const _emojis = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 320),
+  )..forward();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = KScheme.of(context);
+    return Center(
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 26),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          decoration: BoxDecoration(
+            color: s.panel,
+            borderRadius: BorderRadius.circular(30),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.3),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (var i = 0; i < _emojis.length; i++)
+                AnimatedBuilder(
+                  animation: _c,
+                  builder: (_, child) {
+                    final start = (i * 0.09).clamp(0.0, 0.6);
+                    final v = Curves.easeOutBack.transform(
+                      ((_c.value - start) / 0.4).clamp(0.0, 1.0),
+                    );
+                    return Opacity(
+                      opacity: v.clamp(0.0, 1.0),
+                      child: Transform.translate(
+                        offset: Offset(0, 14 * (1 - v)),
+                        child: Transform.scale(
+                            scale: v.clamp(0.01, 1.2), child: child),
+                      ),
+                    );
+                  },
+                  child: GestureDetector(
+                    onTap: () => Navigator.pop(context, _emojis[i]),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 4, vertical: 3),
+                      decoration: widget.current == _emojis[i]
+                          ? const BoxDecoration(
+                              color: KColors.tealSoft, shape: BoxShape.circle)
+                          : null,
+                      child: Text(_emojis[i],
+                          style: const TextStyle(fontSize: 30)),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

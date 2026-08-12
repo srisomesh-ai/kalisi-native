@@ -16,6 +16,7 @@ class ReactionOverlay {
     required Rect anchor,
     required bool mine,
     String? current,
+    bool actionsEnabled = true,
   }) {
     return Navigator.of(context).push<String>(
       PageRouteBuilder(
@@ -30,6 +31,7 @@ class ReactionOverlay {
           mine: mine,
           current: current,
           anim: anim,
+          actionsEnabled: actionsEnabled,
         ),
       ),
     );
@@ -42,6 +44,7 @@ class _ReactionSheet extends StatelessWidget {
   final bool mine;
   final String? current;
   final Animation<double> anim;
+  final bool actionsEnabled;
 
   const _ReactionSheet({
     required this.message,
@@ -49,6 +52,7 @@ class _ReactionSheet extends StatelessWidget {
     required this.mine,
     required this.current,
     required this.anim,
+    this.actionsEnabled = true,
   });
 
   @override
@@ -83,7 +87,7 @@ class _ReactionSheet extends StatelessWidget {
           ),
 
           // the message itself, kept lit above the dim
-          Positioned(
+          if (actionsEnabled) Positioned(
             left: anchor.left,
             top: anchor.top,
             width: anchor.width,
@@ -123,12 +127,13 @@ class _ReactionSheet extends StatelessWidget {
           ),
 
           // actions card
-          Positioned(
-            left: left,
-            top: actionsTop,
-            bottom: actionsBottom,
-            child: _Actions(anim: anim, mine: mine, message: message),
-          ),
+          if (actionsEnabled)
+            Positioned(
+              left: left,
+              top: actionsTop,
+              bottom: actionsBottom,
+              child: _Actions(anim: anim, mine: mine, message: message),
+            ),
         ],
       ),
     );
