@@ -258,27 +258,50 @@ class CallService extends ChangeNotifier {
 
   /// Route audio to a paired Bluetooth headset if there is one.
   Future<void> toggleBluetooth() async {
-    bluetoothOn = !bluetoothOn;
+    final want = !bluetoothOn;
     try {
-      if (bluetoothOn) {
+      if (want) {
+        // find a bluetooth output among the device's audio outputs
+        final outputs = await Helper.audiooutputs;
+        final bt = outputs.where((d) {
+          final l = d.label.toLowerCase();
+          return l.contains('bluetooth') ||
+              l.contains('headset') ||
+              l.contains('bt');
+        }).toList();
+        if (bt.isEmpty) {
+          _lastError = 'No Bluetooth device connected';
+          notifyListeners();
+          return;
+        }
         await Helper.setSpeakerphoneOn(false);
         speakerOn = false;
+        await Helper.selectAudioOutput(bt.first.deviceId);
+      } else {
+        final outputs = await Helper.audiooutputs;
+        if (outputs.isNotEmpty) {
+          await Helper.selectAudioOutput(outputs.first.deviceId);
+        }
       }
-      await Helper.setBluetoothScoOn(bluetoothOn);
+      bluetoothOn = want;
     } catch (_) {
-      // no headset connected — put the flag back
-      bluetoothOn = false;
+      _lastError = 'Could not switch audio device';
     }
     notifyListeners();
+  }
+
+  /// Transient message for the UI (no Bluetooth device, etc.).
+  String? _lastError;
+  String? takeNotice() {
+    final e = _lastError;
+    _lastError = null;
+    return e;
   }
 
   Future<void> toggleSpeaker() async {
     speakerOn = !speakerOn;
     try {
-      if (speakerOn && bluetoothOn) {
-        await Helper.setBluetoothScoOn(false);
-        bluetoothOn = false;
-      }
+      if (speakerOn) bluetoothOn = false;
       await Helper.setSpeakerphoneOn(speakerOn);
     } catch (_) {}
     notifyListeners();

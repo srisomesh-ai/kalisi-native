@@ -298,7 +298,15 @@ class _ActiveControls extends ConsumerWidget {
                 icon: Icons.bluetooth_audio_rounded,
                 on: call.bluetoothOn,
                 label: 'Bluetooth',
-                onTap: call.toggleBluetooth,
+                onTap: () async {
+                  await call.toggleBluetooth();
+                  final notice = call.takeNotice();
+                  if (notice != null && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(notice)),
+                    );
+                  }
+                },
               ),
             ],
           ),
