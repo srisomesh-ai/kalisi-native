@@ -69,18 +69,15 @@ class SettingsScreen extends ConsumerWidget {
           Divider(height: 1, color: s.line),
 
           _Group(title: 'PRIVACY', children: [
-            SwitchListTile(
-              value: ref.watch(maskingProvider),
-              activeColor: KColors.teal,
-              secondary: const Icon(Icons.password_rounded,
-                  color: KColors.teal),
-              title: Text('Hide contact details',
+            ListTile(
+              leading: const Icon(Icons.lock_rounded, color: KColors.teal),
+              title: Text('Contact details are hidden',
                   style: TextStyle(color: s.text, fontSize: 15.5)),
               subtitle: Text(
-                  'Masks phone numbers and emails in messages',
+                  'Phone numbers and emails in messages are always masked',
                   style: TextStyle(color: s.muted, fontSize: 12.5)),
-              onChanged: (v) =>
-                  ref.read(maskingProvider.notifier).state = v,
+              trailing: Icon(Icons.verified_user_rounded,
+                  color: KColors.ok, size: 20),
             ),
             _Tile(
               icon: Icons.shield_outlined,

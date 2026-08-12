@@ -389,6 +389,33 @@ class _ChatViewState extends ConsumerState<ChatView> {
                   onPressed: () async {
                     final me = ref.read(activePersonaProvider).valueOrNull;
                     if (me == null) return;
+                    // confirm first — calls shouldn't start on a stray tap
+                    final go = await showDialog<bool>(
+                      context: context,
+                      builder: (dctx) => AlertDialog(
+                        backgroundColor: s.panel,
+                        title: Text('Call ${widget.contact.name}?',
+                            style: TextStyle(color: s.text, fontSize: 18)),
+                        content: Text(
+                            'Voice call over the internet, end-to-end encrypted.',
+                            style: TextStyle(color: s.muted)),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(dctx, false),
+                            child: Text('Cancel',
+                                style: TextStyle(color: s.muted)),
+                          ),
+                          FilledButton.icon(
+                            onPressed: () => Navigator.pop(dctx, true),
+                            icon: const Icon(Icons.call_rounded, size: 18),
+                            label: const Text('Call'),
+                            style: FilledButton.styleFrom(
+                                backgroundColor: KColors.teal),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (go != true || !context.mounted) return;
                     ref.read(pollerProvider).setFast(true);
                     await ref
                         .read(callServiceProvider)
@@ -777,12 +804,8 @@ class _BubbleState extends ConsumerState<_Bubble> {
             color: s.text,
             fontSize: big ? 34 : 15.5,
             height: big ? 1.15 : 1.3);
-        return Consumer(
-          builder: (_, ref, __) {
-            final on = ref.watch(maskingProvider);
-            return Text(on ? Mask.sensitive(body) : body, style: st);
-          },
-        );
+        // Contact details are always masked — not an option.
+        return Text(Mask.sensitive(body), style: st);
     }
   }
 }

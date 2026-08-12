@@ -39,8 +39,9 @@ class StatusItem {
       };
 
   String get ago {
-    final d = DateTime.now()
+    var d = DateTime.now()
         .difference(DateTime.fromMillisecondsSinceEpoch(ts));
+    if (d.isNegative) d = Duration.zero; // clock skew guard
     if (d.inMinutes < 1) return 'just now';
     if (d.inMinutes < 60) return '${d.inMinutes} min ago';
     if (d.inHours < 24) return '${d.inHours} h ago';
@@ -73,7 +74,15 @@ class StatusItem {
 
   static int _ts(dynamic v) {
     if (v is int) return v;
-    return DateTime.tryParse('$v')?.millisecondsSinceEpoch ?? nowMs();
+    final raw = '$v'.trim();
+    if (raw.isEmpty) return nowMs();
+    // MySQL NOW() has no timezone; the server stores UTC, so parsing it as
+    // local time made every status look like it was posted "just now".
+    final normalised =
+        raw.endsWith('Z') || raw.contains('+') ? raw : '${raw.replaceAll(' ', 'T')}Z';
+    final parsed = DateTime.tryParse(normalised);
+    if (parsed == null) return nowMs();
+    return parsed.millisecondsSinceEpoch;
   }
 }
 

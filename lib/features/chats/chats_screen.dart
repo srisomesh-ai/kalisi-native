@@ -7,6 +7,7 @@ import '../../util/ids.dart';
 import '../../widgets/avatar.dart';
 import 'chat_view.dart';
 import '../contact/contact_details.dart';
+import '../groups/new_group_screen.dart';
 import '../../util/mask.dart';
 
 final chatSearchProvider = StateProvider<String>((ref) => '');
@@ -86,21 +87,68 @@ class _TopBar extends ConsumerWidget {
           ),
           const Spacer(),
           IconButton(
-            onPressed: () {},
-            icon: Icon(Icons.qr_code_scanner_rounded, color: s.text, size: 23),
+            tooltip: 'New group',
+            onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => const NewGroupScreen(),
+            )),
+            icon: Icon(Icons.group_add_outlined, color: s.text, size: 23),
           ),
           IconButton(
-            onPressed: () {
-              final m = ref.read(themeModeProvider);
-              ref.read(themeModeProvider.notifier).state =
-                  m == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
-            },
+            tooltip: 'Menu',
+            onPressed: () => _menu(context, ref),
             icon: Icon(Icons.more_vert_rounded, color: s.text, size: 23),
           ),
         ],
       ),
     );
   }
+}
+
+/// Overflow menu — real actions, not a hidden theme switch.
+void _menu(BuildContext context, WidgetRef ref) {
+  final s = KScheme.of(context);
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: s.panel,
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 8),
+          ListTile(
+            leading: const Icon(Icons.group_add_outlined, color: KColors.teal),
+            title: Text('New group', style: TextStyle(color: s.text)),
+            onTap: () {
+              Navigator.pop(ctx);
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const NewGroupScreen(),
+              ));
+            },
+          ),
+          ListTile(
+            leading:
+                const Icon(Icons.person_add_alt_1_outlined, color: KColors.teal),
+            title: Text('Add a friend', style: TextStyle(color: s.text)),
+            onTap: () {
+              Navigator.pop(ctx);
+              ref.read(goToTabProvider.notifier).state = 2;
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.settings_outlined, color: KColors.teal),
+            title: Text('Settings', style: TextStyle(color: s.text)),
+            onTap: () {
+              Navigator.pop(ctx);
+              ref.read(goToTabProvider.notifier).state = 3;
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
 }
 
 class _SearchField extends ConsumerWidget {

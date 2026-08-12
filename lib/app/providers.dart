@@ -99,8 +99,8 @@ final typingProvider =
     StateNotifierProvider<TypingNotifier, Map<String, int>>(
         (ref) => TypingNotifier());
 
-/// Hide phone numbers and emails in messages. On by default, like the web.
-final maskingProvider = StateProvider<bool>((ref) => true);
+/// Lets any screen ask the shell to switch tabs.
+final goToTabProvider = StateProvider<int?>((ref) => null);
 
 /// Bumped by the poller so pending contact requests refresh on their own.
 final requestsTickProvider = StateProvider<int>((ref) => 0);

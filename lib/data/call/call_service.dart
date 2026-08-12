@@ -28,6 +28,8 @@ class CallService extends ChangeNotifier {
   String? callId;
   bool muted = false;
   bool speakerOn = false;
+  bool onHold = false;
+  bool bluetoothOn = false;
   bool incoming = false;
   DateTime? connectedAt;
   String? error;
@@ -240,9 +242,43 @@ class CallService extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Hold: stop sending and playing audio without dropping the call.
+  void toggleHold() {
+    onHold = !onHold;
+    _localStream?.getAudioTracks().forEach((t) => t.enabled = !onHold);
+    try {
+      _pc?.getReceivers().then((rs) {
+        for (final r in rs) {
+          r.track?.enabled = !onHold;
+        }
+      });
+    } catch (_) {}
+    notifyListeners();
+  }
+
+  /// Route audio to a paired Bluetooth headset if there is one.
+  Future<void> toggleBluetooth() async {
+    bluetoothOn = !bluetoothOn;
+    try {
+      if (bluetoothOn) {
+        await Helper.setSpeakerphoneOn(false);
+        speakerOn = false;
+      }
+      await Helper.setBluetoothScoOn(bluetoothOn);
+    } catch (_) {
+      // no headset connected — put the flag back
+      bluetoothOn = false;
+    }
+    notifyListeners();
+  }
+
   Future<void> toggleSpeaker() async {
     speakerOn = !speakerOn;
     try {
+      if (speakerOn && bluetoothOn) {
+        await Helper.setBluetoothScoOn(false);
+        bluetoothOn = false;
+      }
       await Helper.setSpeakerphoneOn(speakerOn);
     } catch (_) {}
     notifyListeners();

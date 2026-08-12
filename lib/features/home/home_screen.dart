@@ -39,6 +39,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final s = KScheme.of(context);
 
+    // let other screens switch tabs
+    ref.listen(goToTabProvider, (_, t) {
+      if (t != null) {
+        setState(() => _tab = t);
+        ref.read(goToTabProvider.notifier).state = null;
+      }
+    });
+
     // An incoming call takes over the screen wherever we are.
     ref.listen(callServiceProvider, (_, call) {
       if (call.state == CallState.ringing && !_callScreenOpen) {

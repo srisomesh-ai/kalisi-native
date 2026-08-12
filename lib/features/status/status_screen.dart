@@ -41,12 +41,17 @@ class StatusScreen extends ConsumerWidget {
                   ],
                 ),
               ),
-              feed.when(
+              // Keep the previous feed on screen while a refresh runs,
+              // otherwise the page blanks and redraws like a web page.
+              feed.maybeWhen(
+                skipLoadingOnRefresh: true,
+                skipLoadingOnReload: true,
                 loading: () => const Padding(
                   padding: EdgeInsets.all(40),
                   child: Center(
                       child: CircularProgressIndicator(color: KColors.teal)),
                 ),
+                orElse: () => const SizedBox.shrink(),
                 error: (_, __) => Padding(
                   padding: const EdgeInsets.all(30),
                   child: Center(
@@ -88,8 +93,10 @@ class StatusScreen extends ConsumerWidget {
                     ),
                     if (f.others.isEmpty)
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
+                        padding: const EdgeInsets.fromLTRB(24, 40, 24, 60),
                         child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
                             Icon(Icons.blur_circular_outlined,
                                 size: 42, color: s.faint),

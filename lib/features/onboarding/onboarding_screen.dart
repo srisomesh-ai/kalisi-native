@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/colors.dart';
+import '../settings/backup_screen.dart';
 import '../../app/providers.dart';
 import '../../data/api/api_client.dart';
 import '../../widgets/k_button.dart';
@@ -130,6 +131,43 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               Center(
                 child: Text('No OTP, no SIM, no email to verify.',
                     style: TextStyle(color: s.faint, fontSize: 12.5)),
+              ),
+              const SizedBox(height: 22),
+              Row(
+                children: [
+                  Expanded(child: Divider(color: s.line)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Text('or',
+                        style: TextStyle(color: s.faint, fontSize: 12.5)),
+                  ),
+                  Expanded(child: Divider(color: s.line)),
+                ],
+              ),
+              const SizedBox(height: 18),
+              // Returning users restore instead of creating a new identity.
+              OutlinedButton.icon(
+                onPressed: _busy
+                    ? null
+                    : () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const RestoreScreen(),
+                        )),
+                icon: const Icon(Icons.restore_rounded, size: 19),
+                label: const Text('I already have an account',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 15)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: KColors.teal,
+                  side: const BorderSide(color: KColors.teal, width: 1.4),
+                  minimumSize: const Size.fromHeight(52),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Center(
+                child: Text('Restore from your backup file',
+                    style: TextStyle(color: s.faint, fontSize: 12)),
               ),
               const Spacer(),
             ],
