@@ -68,6 +68,9 @@ class Messages extends Table {
   TextColumn get replyToId => text().nullable()();
   TextColumn get replyToText => text().nullable()();
   TextColumn get replyToWho => text().nullable()();
+  /// Kept for messages that still need sending, so they can be retried.
+  TextColumn get pendingEnvelope => text().nullable()();
+  IntColumn get sendAttempts => integer().withDefault(const Constant(0))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -81,7 +84,7 @@ class KalisiDb extends _$KalisiDb {
   KalisiDb.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -104,6 +107,10 @@ class KalisiDb extends _$KalisiDb {
             await m.addColumn(contacts, contacts.isGroup);
             await m.addColumn(contacts, contacts.groupKey);
             await m.addColumn(contacts, contacts.groupMembers);
+          }
+          if (from < 6) {
+            await m.addColumn(messages, messages.pendingEnvelope);
+            await m.addColumn(messages, messages.sendAttempts);
           }
         },
       );
@@ -220,6 +227,36 @@ class KalisiDb extends _$KalisiDb {
       (select(contacts)
             ..where((t) => t.personaId.equals(personaId) & t.isGroup.equals(true)))
           .get();
+
+  /// Messages still waiting to go out (oldest first).
+  Future<List<Message>> queuedMessages(String personaId) =>
+      (select(messages)
+            ..where((t) =>
+                t.personaId.equals(personaId) &
+                t.status.equals('queued'))
+            ..orderBy([(t) => OrderingTerm.asc(t.ts)])
+            ..limit(30))
+          .get();
+
+  Future<void> markQueued(String id, String envelope) =>
+      (update(messages)..where((t) => t.id.equals(id))).write(
+        MessagesCompanion(
+          status: const Value('queued'),
+          pendingEnvelope: Value(envelope),
+        ),
+      );
+
+  Future<void> markSent(String id) =>
+      (update(messages)..where((t) => t.id.equals(id))).write(
+        const MessagesCompanion(
+          status: Value('sent'),
+          pendingEnvelope: Value(null),
+        ),
+      );
+
+  Future<void> bumpAttempts(String id, int attempts) =>
+      (update(messages)..where((t) => t.id.equals(id)))
+          .write(MessagesCompanion(sendAttempts: Value(attempts)));
 
   Future<void> setBlocked(String contactId, bool blocked) =>
       (update(contacts)..where((t) => t.id.equals(contactId)))

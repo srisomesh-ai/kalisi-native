@@ -622,14 +622,18 @@ class _BubbleState extends ConsumerState<_Bubble> {
                           if (mine) ...[
                             const SizedBox(width: 4),
                             Icon(
-                              message.status == 'delivered' ||
-                                      message.status == 'read'
-                                  ? Icons.done_all
-                                  : Icons.done,
+                              switch (message.status) {
+                                'queued' => Icons.schedule_rounded,
+                                'failed' => Icons.error_outline_rounded,
+                                'delivered' || 'read' => Icons.done_all,
+                                _ => Icons.done,
+                              },
                               size: 14,
-                              color: message.status == 'read'
-                                  ? KColors.teal
-                                  : s.faint,
+                              color: switch (message.status) {
+                                'read' => KColors.teal,
+                                'failed' => KColors.danger,
+                                _ => s.faint,
+                              },
                             ),
                           ],
                         ],

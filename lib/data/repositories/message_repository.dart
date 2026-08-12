@@ -103,9 +103,67 @@ class MessageRepository {
       // 4. mark sent
       await _db.updateMessageStatus(cid, 'sent');
     } catch (e) {
+      // Offline or the server is unreachable — keep the encrypted envelope
+      // and let the queue deliver it when the connection is back.
+      if (_isNetworkIssue(e)) {
+        await _db.markQueued(
+          cid,
+          jsonEncode({'to': contact.kalId, 'obj': obj}),
+        );
+        return;
+      }
       await _db.updateMessageStatus(cid, 'failed');
       rethrow;
     }
+  }
+
+  /// Anything that looks like a connectivity problem rather than a rejection.
+  bool _isNetworkIssue(Object e) {
+    if (e is ApiException) {
+      return e.error == 'network_error' || e.error == 'timeout';
+    }
+    return true; // dio/socket errors land here too
+  }
+
+  /// Try to deliver anything waiting in the queue. Called by the poller.
+  Future<int> flushQueue(Persona me) async {
+    final queued = await _db.queuedMessages(me.id);
+    if (queued.isEmpty) return 0;
+    var sent = 0;
+    for (final m in queued) {
+      final env = m.pendingEnvelope;
+      if (env == null) continue;
+      // give up after a lot of tries so it can't retry forever
+      if (m.sendAttempts >= 50) {
+        await _db.updateMessageStatus(m.id, 'failed');
+        continue;
+      }
+      try {
+        final data = jsonDecode(env) as Map<String, dynamic>;
+        final to = data['to']?.toString();
+        final obj = (data['obj'] as Map).cast<String, dynamic>();
+        final contact = await _db.contactById(m.contactId);
+        if (to == null || contact?.publicJwk == null) continue;
+
+        final enc = await KalisiCrypto.encryptObject(
+            obj, me.privateJwk, contact!.publicJwk!);
+        await _api.send(
+          kalId: me.kalId,
+          token: me.token,
+          to: to,
+          clientId: m.id,
+          iv: enc.iv,
+          blob: enc.blob,
+        );
+        await _db.markSent(m.id);
+        sent++;
+      } catch (_) {
+        await _db.bumpAttempts(m.id, m.sendAttempts + 1);
+        // stop on the first failure — still offline, try again next tick
+        break;
+      }
+    }
+    return sent;
   }
 
   /// Send a media message (photo or voice) to a contact.

@@ -161,6 +161,10 @@ class Poller {
       if (me != null) {
         final received = await _ref.read(messageRepoProvider).poll(me);
         if (received > 0) await _alert(me);
+        // deliver anything that was written while offline
+        try {
+          await _ref.read(messageRepoProvider).flushQueue(me);
+        } catch (_) {}
         // drop stale 'typing' flags so the label clears itself
         final typing = _ref.read(typingProvider);
         if (typing.isNotEmpty) {
