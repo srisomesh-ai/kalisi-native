@@ -258,6 +258,10 @@ class KalisiDb extends _$KalisiDb {
       (update(messages)..where((t) => t.id.equals(id)))
           .write(MessagesCompanion(sendAttempts: Value(attempts)));
 
+  Future<void> setGroupKey(String contactId, String key) =>
+      (update(contacts)..where((t) => t.id.equals(contactId)))
+          .write(ContactsCompanion(groupKey: Value(key)));
+
   Future<void> setGroupMembers(String contactId, String membersJson) =>
       (update(contacts)..where((t) => t.id.equals(contactId)))
           .write(ContactsCompanion(groupMembers: Value(membersJson)));

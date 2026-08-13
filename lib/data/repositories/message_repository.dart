@@ -383,6 +383,70 @@ class MessageRepository {
     );
   }
 
+  /// Ask a contact to re-send group keys, at most once a minute, so a member
+  /// who was offline during a key change recovers without doing anything.
+  final Map<String, int> _keyAsks = {};
+  Future<void> _maybeRequestGroupKey(Persona me, Contact from) async {
+    final last = _keyAsks[from.kalId] ?? 0;
+    final now = nowMs();
+    if (now - last < 60000) return;
+    _keyAsks[from.kalId] = now;
+
+    final obj = <String, dynamic>{
+      'kind': 'gkey-request',
+      'cid': newUuid(),
+      'ts': now,
+    };
+    try {
+      final enc = await KalisiCrypto.encryptObject(
+          obj, me.privateJwk, from.publicJwk!);
+      await _api.send(
+        kalId: me.kalId,
+        token: me.token,
+        to: from.kalId,
+        clientId: obj['cid'] as String,
+        iv: enc.iv,
+        blob: enc.blob,
+      );
+    } catch (_) {}
+  }
+
+  /// Replace a group's key and hand the new one to everyone still in it.
+  ///
+  /// Called after removing someone: they keep the old key, but it stops being
+  /// used, so they can't read anything sent from now on.
+  Future<String> rotateGroupKey({
+    required Persona me,
+    required Contact group,
+    required List<String> members,
+  }) async {
+    final newKey = KalisiCrypto.newGroupKey();
+
+    // store it locally first, so our own sends use it immediately
+    await _db.setGroupKey(group.id, newKey);
+
+    final db = _db;
+    for (final kid in members) {
+      if (kid == me.kalId) continue;
+      final c = await db.contactByKalId(me.id, kid);
+      if (c == null || c.publicJwk == null) continue;
+      try {
+        await shareGroupKey(
+          me: me,
+          to: c,
+          gid: group.kalId,
+          name: group.name,
+          key: newKey,
+          members: members,
+        );
+      } catch (_) {
+        // a member we couldn't reach will pick the key up when they're next
+        // online and someone re-shares; the group still works for the rest
+      }
+    }
+    return newKey;
+  }
+
   /// Send a message to a group using its shared key.
   Future<void> sendGroupText({
     required Persona me,
@@ -520,6 +584,11 @@ class MessageRepository {
               break;
             } catch (_) {}
           }
+          // Nothing matched: the group key may have been rotated while we
+          // were offline. Ask the sender to re-send it (at most occasionally).
+          if (obj == null && contact.publicJwk != null) {
+            await _maybeRequestGroupKey(me, contact);
+          }
         }
         if (obj == null) continue;
 
@@ -605,6 +674,31 @@ class MessageRepository {
               verified: const Value(true),
               createdAt: Value(existing?.createdAt ?? nowMs()),
             ));
+          }
+          continue;
+        }
+        // They couldn't read a group message — re-send the keys they need.
+        if (kind == 'gkey-request') {
+          for (final g in await _db.groupsFor(me.id)) {
+            final key = g.groupKey;
+            if (key == null) continue;
+            List<String> mem = const [];
+            try {
+              mem = ((jsonDecode(g.groupMembers ?? '[]') as List))
+                  .map((e) => '$e')
+                  .toList();
+            } catch (_) {}
+            if (!mem.contains(contact.kalId)) continue;
+            try {
+              await shareGroupKey(
+                me: me,
+                to: contact,
+                gid: g.kalId,
+                name: g.name,
+                key: key,
+                members: mem,
+              );
+            } catch (_) {}
           }
           continue;
         }

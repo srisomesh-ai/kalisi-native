@@ -23,6 +23,7 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
   String? _owner;
   String _name = '';
   bool _loading = true;
+  bool _rotating = false;
 
   @override
   void initState() {
@@ -98,6 +99,23 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
         await ref.read(dbProvider).setContactProfile(widget.group.id,
             name: name, avatar: widget.group.avatar ?? '');
         if (mounted) setState(() => _name = name);
+      }
+      // Removing someone leaves them holding the old key, so replace it and
+      // hand the new one to everyone still in the group.
+      if (act == 'remove' && mounted) {
+        final me2 = ref.read(activePersonaProvider).valueOrNull;
+        final fresh = await ref.read(dbProvider).contactById(widget.group.id);
+        if (me2 != null && fresh != null) {
+          setState(() => _rotating = true);
+          try {
+            await ref.read(messageRepoProvider).rotateGroupKey(
+                  me: me2,
+                  group: fresh,
+                  members: _members,
+                );
+          } catch (_) {}
+          if (mounted) setState(() => _rotating = false);
+        }
       }
       if (act == 'leave' && mounted) {
         await ref.read(dbProvider).deleteContact(widget.group.id);
@@ -283,6 +301,40 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
     }
   }
 
+  Future<void> _confirmRemove(String kalId) async {
+    final me = ref.read(activePersonaProvider).valueOrNull;
+    final c = me == null
+        ? null
+        : await ref.read(dbProvider).contactByKalId(me.id, kalId);
+    if (!mounted) return;
+    final who = c?.name ?? kalId;
+    final s = KScheme.of(context);
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: s.panel,
+        title: Text('Remove $who?', style: TextStyle(color: s.text)),
+        content: Text(
+            'They stop receiving messages, and the group gets a new encryption key so they cannot read anything sent from now on.',
+            style: TextStyle(color: s.muted)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: TextStyle(color: s.muted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove',
+                style: TextStyle(
+                    color: KColors.danger, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await _act('remove', member: kalId);
+  }
+
   Future<void> _confirmLeave() async {
     final s = KScheme.of(context);
     final ok = await showDialog<bool>(
@@ -385,6 +437,33 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
                           fontWeight: FontWeight.w600)),
                 ),
               ),
+              if (_rotating)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: KColors.amberBg,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Row(
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: KColors.amberInk),
+                        ),
+                        SizedBox(width: 10),
+                        Expanded(
+                          child: Text('Updating the group key…',
+                              style: TextStyle(
+                                  color: KColors.amberInk, fontSize: 13)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               const SizedBox(height: 18),
 
               Padding(
@@ -424,7 +503,7 @@ class _GroupInfoScreenState extends ConsumerState<GroupInfoScreen> {
                       isOwner: kid == _owner,
                       isMe: me != null && kid == me.kalId,
                       canRemove: _isOwner && kid != _owner,
-                      onRemove: () => _act('remove', member: kid),
+                      onRemove: () => _confirmRemove(kid),
                     )),
 
               const SizedBox(height: 20),
