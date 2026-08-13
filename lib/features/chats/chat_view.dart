@@ -736,7 +736,9 @@ class _BubbleState extends ConsumerState<_Bubble> {
         onReply?.call(message);
         break;
       case 'copy':
-        await Clipboard.setData(ClipboardData(text: message.body ?? ''));
+        // Copy the masked form, so hidden details don't leak via the clipboard.
+        await Clipboard.setData(
+            ClipboardData(text: Mask.sensitive(message.body ?? '')));
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -802,8 +804,9 @@ class _BubbleState extends ConsumerState<_Bubble> {
         final big = _emojiOnly(body);
         final st = TextStyle(
             color: s.text,
-            fontSize: big ? 34 : 15.5,
-            height: big ? 1.15 : 1.3);
+            fontSize: big ? 36 : 16.5,
+            fontWeight: big ? FontWeight.w400 : FontWeight.w500,
+            height: big ? 1.15 : 1.35);
         // Contact details are always masked — not an option.
         return Text(Mask.sensitive(body), style: st);
     }
@@ -914,6 +917,14 @@ class _VoiceContentState extends State<_VoiceContent> {
   /// decoded audio to a real file once and play that.
   Future<String?> _ensureFile() async {
     if (_filePath != null && File(_filePath!).existsSync()) return _filePath;
+
+    // A voice note we recorded ourselves already exists on disk.
+    final local = widget.message.mediaPath;
+    if (local != null && local.isNotEmpty && File(local).existsSync()) {
+      _filePath = local;
+      return local;
+    }
+
     final data = widget.message.body;
     if (data == null || data.isEmpty) return null;
     try {

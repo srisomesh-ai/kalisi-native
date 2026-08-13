@@ -189,7 +189,8 @@ class MessageRepository {
       personaId: me.id,
       fromMe: 'me',
       kind: Value(kind),
-      body: Value(kind == 'img' ? dataUrl : null),
+      // keep the payload for both photo and voice so it can be replayed
+      body: Value(dataUrl),
       mediaPath: Value(localPath),
       ts: ts,
       status: const Value('sending'),

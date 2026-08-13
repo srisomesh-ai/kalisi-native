@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import '../../theme/colors.dart';
+import '../../util/mask.dart';
 import '../../data/db/database.dart';
 
 /// Floating reaction picker that appears over the message you long-pressed,
@@ -81,11 +82,12 @@ class _ReactionSheet extends StatelessWidget {
         ],
       );
     }
+    // Masked here as well — long-press must not reveal what the bubble hides.
     return Text(
-      message.body ?? '',
+      Mask.sensitive(message.body ?? ''),
       maxLines: 4,
       overflow: TextOverflow.ellipsis,
-      style: TextStyle(color: s.text, fontSize: 15, height: 1.4),
+      style: TextStyle(color: s.text, fontSize: 15.5, height: 1.4),
     );
   }
 
