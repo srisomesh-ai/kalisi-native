@@ -187,6 +187,26 @@ class ApiClient {
         'blob': blob,
       });
 
+  /// Add/remove members, rename, or leave a group.
+  Future<Map<String, dynamic>> groupUpdate({
+    required String kalId,
+    required String token,
+    required String gid,
+    required String act, // add | remove | rename | leave
+    List<String>? members,
+    String? member,
+    String? name,
+  }) =>
+      call('group_update', {
+        'kal_id': kalId,
+        'token': token,
+        'gid': gid,
+        'act': act,
+        if (members != null) 'members': members,
+        if (member != null) 'member': member,
+        if (name != null) 'name': name,
+      });
+
   Future<Map<String, dynamic>> groupInfo({
     required String kalId,
     required String token,

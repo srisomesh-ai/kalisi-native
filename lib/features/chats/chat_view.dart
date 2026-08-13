@@ -17,6 +17,7 @@ import '../../util/ids.dart';
 import '../../widgets/avatar.dart';
 import '../../util/mask.dart';
 import '../contact/contact_details.dart';
+import '../groups/group_info_screen.dart';
 import '../call/call_screen.dart';
 import 'reaction_overlay.dart';
 import '../../data/call/call_service.dart';
@@ -441,8 +442,9 @@ class _ChatViewState extends ConsumerState<ChatView> {
           children: [
             GestureDetector(
               onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) =>
-                    ContactDetailsScreen(contact: widget.contact),
+                builder: (_) => widget.contact.isGroup
+                    ? GroupInfoScreen(group: widget.contact)
+                    : ContactDetailsScreen(contact: widget.contact),
               )),
               child: Avatar(
                 seed: widget.contact.kalId,

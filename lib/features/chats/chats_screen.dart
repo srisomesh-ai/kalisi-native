@@ -7,6 +7,7 @@ import '../../util/ids.dart';
 import '../../widgets/avatar.dart';
 import 'chat_view.dart';
 import '../contact/contact_details.dart';
+import '../groups/group_info_screen.dart';
 import '../groups/new_group_screen.dart';
 import '../../util/mask.dart';
 
@@ -294,7 +295,9 @@ class _ChatRow extends ConsumerWidget {
           children: [
             GestureDetector(
               onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => ContactDetailsScreen(contact: contact),
+                builder: (_) => contact.isGroup
+                    ? GroupInfoScreen(group: contact)
+                    : ContactDetailsScreen(contact: contact),
               )),
               child: Avatar(
                 seed: contact.kalId,

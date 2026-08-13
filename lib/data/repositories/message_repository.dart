@@ -352,6 +352,37 @@ class MessageRepository {
     return (await _db.contactById(localId))!;
   }
 
+  /// Hand a group's shared key to one member over their 1:1 channel.
+  Future<void> shareGroupKey({
+    required Persona me,
+    required Contact to,
+    required String gid,
+    required String name,
+    required String key,
+    required List<String> members,
+  }) async {
+    if (to.publicJwk == null) return;
+    final obj = <String, dynamic>{
+      'kind': 'gkey',
+      'gid': gid,
+      'name': name,
+      'key': key,
+      'members': members,
+      'cid': newUuid(),
+      'ts': nowMs(),
+    };
+    final enc =
+        await KalisiCrypto.encryptObject(obj, me.privateJwk, to.publicJwk!);
+    await _api.send(
+      kalId: me.kalId,
+      token: me.token,
+      to: to.kalId,
+      clientId: obj['cid'] as String,
+      iv: enc.iv,
+      blob: enc.blob,
+    );
+  }
+
   /// Send a message to a group using its shared key.
   Future<void> sendGroupText({
     required Persona me,
