@@ -7,6 +7,7 @@ import '../data/push/push_service.dart';
 import '../data/call/call_service.dart';
 import '../util/mask.dart';
 import '../features/status/status_model.dart';
+import '../features/settings/backup_screen.dart';
 import '../data/api/api_client.dart';
 import '../data/repositories/auth_repository.dart';
 import '../data/repositories/message_repository.dart';
@@ -204,6 +205,12 @@ class Poller {
         // status feed — refresh roughly every 15s so new updates just appear
         if (_ticks % 5 == 0) {
           _ref.read(statusRefreshProvider.notifier).state++;
+        }
+        // keep the on-phone backup current, quietly
+        if (_ticks % 200 == 0) {
+          try {
+            await BackupStore.save(me);
+          } catch (_) {}
         }
         // contacts' names/photos change rarely — refresh about every minute
         if (_ticks % 20 == 0) {

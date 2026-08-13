@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_theme.dart';
@@ -17,7 +18,45 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final _name = TextEditingController();
   final _username = TextEditingController();
   bool _busy = false;
+  bool _foundBackup = false;
+  String? _backupWho;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _lookForBackup();
+  }
+
+  /// Look for a backup this phone already holds, so a returning user
+  /// doesn't have to hunt for a file.
+  Future<void> _lookForBackup() async {
+    try {
+      final f = await BackupStore.find();
+      if (f == null || !mounted) return;
+      String? who;
+      try {
+        final j = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
+        who = j['username']?.toString();
+      } catch (_) {}
+      setState(() {
+        _foundBackup = true;
+        _backupWho = who;
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _restoreFound() async {
+    setState(() => _busy = true);
+    final ok = await BackupStore.restore(ref);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('That backup could not be read')),
+      );
+    }
+  }
 
   @override
   void dispose() {
@@ -47,6 +86,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           .read(authRepoProvider)
           .createIdentity(name: name, username: username);
       ref.read(authStateProvider.notifier).state++;
+      // save a backup straight away so the account is never unprotected
+      try {
+        final me = await ref.read(dbProvider).activePersona();
+        if (me != null) await BackupStore.save(me);
+      } catch (_) {}
     } on ApiException catch (e) {
       setState(() {
         _busy = false;
@@ -132,43 +176,73 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 child: Text('No OTP, no SIM, no email to verify.',
                     style: TextStyle(color: s.faint, fontSize: 12.5)),
               ),
-              const SizedBox(height: 22),
-              Row(
-                children: [
-                  Expanded(child: Divider(color: s.line)),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Text('or',
-                        style: TextStyle(color: s.faint, fontSize: 12.5)),
-                  ),
-                  Expanded(child: Divider(color: s.line)),
-                ],
-              ),
-              const SizedBox(height: 18),
-              // Returning users restore instead of creating a new identity.
-              OutlinedButton.icon(
-                onPressed: _busy
-                    ? null
-                    : () => Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => const RestoreScreen(),
-                        )),
-                icon: const Icon(Icons.restore_rounded, size: 19),
-                label: const Text('I already have an account',
-                    style: TextStyle(
-                        fontWeight: FontWeight.w700, fontSize: 15)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: KColors.teal,
-                  side: const BorderSide(color: KColors.teal, width: 1.4),
-                  minimumSize: const Size.fromHeight(52),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
+              // A backup found on this phone — one tap to come back.
+              if (_foundBackup) ...[
+                const SizedBox(height: 22),
+                Row(
+                  children: [
+                    Expanded(child: Divider(color: s.line)),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text('or',
+                          style: TextStyle(color: s.faint, fontSize: 12.5)),
+                    ),
+                    Expanded(child: Divider(color: s.line)),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 8),
-              Center(
-                child: Text('Restore from your backup file',
-                    style: TextStyle(color: s.faint, fontSize: 12)),
-              ),
+                const SizedBox(height: 18),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: KColors.tealSoft,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.restore_rounded,
+                              color: KColors.teal, size: 22),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text('Account found on this phone',
+                                    style: TextStyle(
+                                        color: KColors.teal,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700)),
+                                if (_backupWho != null)
+                                  Text('@$_backupWho',
+                                      style: TextStyle(
+                                          color: KColors.teal.withOpacity(0.8),
+                                          fontSize: 12.5)),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: _busy ? null : _restoreFound,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: KColors.teal,
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 13),
+                          ),
+                          child: const Text('Restore my account',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 15)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const Spacer(),
             ],
           ),

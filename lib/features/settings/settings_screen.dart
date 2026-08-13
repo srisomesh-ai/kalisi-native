@@ -104,8 +104,8 @@ class SettingsScreen extends ConsumerWidget {
           _Group(title: 'ACCOUNT', children: [
             _Tile(
               icon: Icons.backup_outlined,
-              title: 'Backup & restore',
-              subtitle: 'Save your account so you can get it back',
+              title: 'Backup',
+              subtitle: 'Keep your account safe on this phone',
               onTap: () => Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => const BackupScreen(),
               )),
