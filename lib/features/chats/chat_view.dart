@@ -20,6 +20,7 @@ import '../contact/contact_details.dart';
 import '../groups/group_info_screen.dart';
 import '../call/call_screen.dart';
 import 'reaction_overlay.dart';
+import 'forward_sheet.dart';
 import '../../data/call/call_service.dart';
 
 /// Streams messages for a given contact from the local database.
@@ -382,9 +383,19 @@ class _ChatViewState extends ConsumerState<ChatView> {
       backgroundColor: s.chatBg,
       appBar: AppBar(
         titleSpacing: 0,
-        actions: (widget.contact.isGroup || widget.contact.pending)
-            ? null
-            : [
+        actions: [
+                IconButton(
+                  tooltip: 'Search',
+                  onPressed: () => showSearch(
+                    context: context,
+                    delegate: _ChatSearch(
+                      contact: widget.contact,
+                      db: ref.read(dbProvider),
+                    ),
+                  ),
+                  icon: Icon(Icons.search_rounded, color: KColors.teal),
+                ),
+                if (!widget.contact.isGroup && !widget.contact.pending)
                 IconButton(
                   tooltip: 'Audio call',
                   onPressed: () async {
@@ -656,6 +667,11 @@ class _BubbleState extends ConsumerState<_Bubble> {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
+                          if (message.starred) ...[
+                            Icon(Icons.star_rounded,
+                                size: 12, color: KColors.amber),
+                            const SizedBox(width: 3),
+                          ],
                           Text(fmtTime(message.ts),
                               style: TextStyle(color: s.faint, fontSize: 10.5)),
                           if (mine) ...[
@@ -747,6 +763,12 @@ class _BubbleState extends ConsumerState<_Bubble> {
                 content: Text('Copied'), duration: Duration(seconds: 1)),
           );
         }
+        break;
+      case 'forward':
+        await ForwardSheet.open(context, ref, message);
+        break;
+      case 'star':
+        await ref.read(dbProvider).setStarred(message.id, !message.starred);
         break;
       case 'delete':
         if (mine) {
@@ -1896,6 +1918,86 @@ class _BurnCoverState extends ConsumerState<_BurnCover> {
                   fontWeight: FontWeight.w600)),
         ],
       ),
+    );
+  }
+}
+
+
+/// Search this chat's messages.
+class _ChatSearch extends SearchDelegate<void> {
+  final Contact contact;
+  final KalisiDb db;
+  _ChatSearch({required this.contact, required this.db});
+
+  @override
+  String get searchFieldLabel => 'Search in this chat';
+
+  @override
+  List<Widget> buildActions(BuildContext context) => [
+        if (query.isNotEmpty)
+          IconButton(
+            onPressed: () => query = '',
+            icon: const Icon(Icons.clear_rounded),
+          ),
+      ];
+
+  @override
+  Widget buildLeading(BuildContext context) => IconButton(
+        onPressed: () => close(context, null),
+        icon: const Icon(Icons.arrow_back_rounded),
+      );
+
+  @override
+  Widget buildSuggestions(BuildContext context) => _results(context);
+
+  @override
+  Widget buildResults(BuildContext context) => _results(context);
+
+  Widget _results(BuildContext context) {
+    final s = KScheme.of(context);
+    if (query.trim().length < 2) {
+      return Center(
+        child: Text('Type at least two letters',
+            style: TextStyle(color: s.muted)),
+      );
+    }
+    return FutureBuilder<List<Message>>(
+      future: db.searchInChat(contact.id, query.trim()),
+      builder: (_, snap) {
+        if (!snap.hasData) {
+          return const Center(
+              child: CircularProgressIndicator(color: KColors.teal));
+        }
+        final hits = snap.data!;
+        if (hits.isEmpty) {
+          return Center(
+            child: Text('Nothing found', style: TextStyle(color: s.muted)),
+          );
+        }
+        return ListView.separated(
+          itemCount: hits.length,
+          separatorBuilder: (_, __) => Divider(height: 1, color: s.line),
+          itemBuilder: (_, i) {
+            final m = hits[i];
+            return ListTile(
+              leading: Icon(
+                  m.fromMe == 'me'
+                      ? Icons.arrow_upward_rounded
+                      : Icons.arrow_downward_rounded,
+                  size: 18,
+                  color: s.faint),
+              title: Text(
+                Mask.sensitive(m.body ?? ''),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: s.text, fontSize: 14.5),
+              ),
+              subtitle: Text(fmtTime(m.ts),
+                  style: TextStyle(color: s.faint, fontSize: 11.5)),
+            );
+          },
+        );
+      },
     );
   }
 }

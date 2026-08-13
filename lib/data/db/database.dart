@@ -43,6 +43,9 @@ class Contacts extends Table {
   BoolColumn get isGroup => boolean().withDefault(const Constant(false))();
   TextColumn get groupKey => text().nullable()();      // shared AES key (b64)
   TextColumn get groupMembers => text().nullable()();  // JSON list of KAL-ids
+  BoolColumn get muted => boolean().withDefault(const Constant(false))();
+  BoolColumn get pinned => boolean().withDefault(const Constant(false))();
+  BoolColumn get archived => boolean().withDefault(const Constant(false))();
   IntColumn get createdAt => integer()();
 
   @override
@@ -71,6 +74,7 @@ class Messages extends Table {
   /// Kept for messages that still need sending, so they can be retried.
   TextColumn get pendingEnvelope => text().nullable()();
   IntColumn get sendAttempts => integer().withDefault(const Constant(0))();
+  BoolColumn get starred => boolean().withDefault(const Constant(false))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -84,7 +88,7 @@ class KalisiDb extends _$KalisiDb {
   KalisiDb.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -111,6 +115,12 @@ class KalisiDb extends _$KalisiDb {
           if (from < 6) {
             await m.addColumn(messages, messages.pendingEnvelope);
             await m.addColumn(messages, messages.sendAttempts);
+          }
+          if (from < 7) {
+            await m.addColumn(contacts, contacts.muted);
+            await m.addColumn(contacts, contacts.pinned);
+            await m.addColumn(contacts, contacts.archived);
+            await m.addColumn(messages, messages.starred);
           }
         },
       );
@@ -257,6 +267,48 @@ class KalisiDb extends _$KalisiDb {
   Future<void> bumpAttempts(String id, int attempts) =>
       (update(messages)..where((t) => t.id.equals(id)))
           .write(MessagesCompanion(sendAttempts: Value(attempts)));
+
+  Future<void> setMuted(String id, bool v) =>
+      (update(contacts)..where((t) => t.id.equals(id)))
+          .write(ContactsCompanion(muted: Value(v)));
+
+  Future<void> setPinned(String id, bool v) =>
+      (update(contacts)..where((t) => t.id.equals(id)))
+          .write(ContactsCompanion(pinned: Value(v)));
+
+  Future<void> setArchived(String id, bool v) =>
+      (update(contacts)..where((t) => t.id.equals(id)))
+          .write(ContactsCompanion(archived: Value(v)));
+
+  Future<void> setStarred(String id, bool v) =>
+      (update(messages)..where((t) => t.id.equals(id)))
+          .write(MessagesCompanion(starred: Value(v)));
+
+  /// Every starred message, newest first.
+  Stream<List<Message>> watchStarred(String personaId) =>
+      (select(messages)
+            ..where((t) =>
+                t.personaId.equals(personaId) & t.starred.equals(true))
+            ..orderBy([(t) => OrderingTerm.desc(t.ts)]))
+          .watch();
+
+  /// Search a chat's messages for a phrase.
+  Future<List<Message>> searchInChat(String contactId, String q) =>
+      (select(messages)
+            ..where((t) =>
+                t.contactId.equals(contactId) & t.body.like('%$q%'))
+            ..orderBy([(t) => OrderingTerm.desc(t.ts)])
+            ..limit(100))
+          .get();
+
+  /// Search every chat.
+  Future<List<Message>> searchAll(String personaId, String q) =>
+      (select(messages)
+            ..where((t) =>
+                t.personaId.equals(personaId) & t.body.like('%$q%'))
+            ..orderBy([(t) => OrderingTerm.desc(t.ts)])
+            ..limit(100))
+          .get();
 
   Future<void> setGroupKey(String contactId, String key) =>
       (update(contacts)..where((t) => t.id.equals(contactId)))

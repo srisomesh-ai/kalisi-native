@@ -154,6 +154,8 @@ class Poller {
       }
 
       final contact = await db.contactById(latest.contactId);
+      // a muted chat still arrives, it just doesn't announce itself
+      if (contact?.muted == true) return;
       final who = contact?.name ?? 'New message';
       final body = switch (latest.kind) {
         'img' => '📷 Photo',

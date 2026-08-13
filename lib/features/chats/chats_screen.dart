@@ -24,6 +24,9 @@ final contactsStreamProvider = StreamProvider<List<Contact>>((ref) async* {
   yield* ref.watch(dbProvider).watchContacts(me.id);
 });
 
+/// Whether the list is showing archived chats.
+final showArchivedProvider = StateProvider<bool>((ref) => false);
+
 class ChatsScreen extends ConsumerWidget {
   const ChatsScreen({super.key});
 
@@ -48,16 +51,41 @@ class ChatsScreen extends ConsumerWidget {
                   child: Text('Could not load chats',
                       style: TextStyle(color: s.muted))),
               data: (list) {
-                final filtered = query.isEmpty
-                    ? list
-                    : list
-                        .where((c) => c.name.toLowerCase().contains(query))
-                        .toList();
-                if (filtered.isEmpty) return const _Empty();
+                final showArchived = ref.watch(showArchivedProvider);
+                var filtered = list
+                    .where((c) => showArchived ? c.archived : !c.archived)
+                    .toList();
+                if (query.isNotEmpty) {
+                  filtered = filtered
+                      .where((c) => c.name.toLowerCase().contains(query))
+                      .toList();
+                }
+                // pinned chats sit at the top
+                filtered.sort((a, b) {
+                  if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+                  return 0;
+                });
+                final archivedCount =
+                    list.where((c) => c.archived).length;
+                if (filtered.isEmpty && archivedCount == 0) {
+                  return const _Empty();
+                }
                 return ListView.builder(
                   padding: const EdgeInsets.only(top: 4, bottom: 20),
-                  itemCount: filtered.length,
-                  itemBuilder: (_, i) => _ChatRow(contact: filtered[i]),
+                  itemCount: filtered.length + (archivedCount > 0 ? 1 : 0),
+                  itemBuilder: (_, i) {
+                    if (archivedCount > 0 && i == 0) {
+                      return _ArchivedBar(
+                        count: archivedCount,
+                        showing: showArchived,
+                        onTap: () => ref
+                            .read(showArchivedProvider.notifier)
+                            .state = !showArchived,
+                      );
+                    }
+                    final c = filtered[i - (archivedCount > 0 ? 1 : 0)];
+                    return _ChatRow(contact: c);
+                  },
                 );
               },
             ),
@@ -351,10 +379,35 @@ class _ChatRow extends ConsumerWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              time,
-              style: TextStyle(
-                  color: s.faint, fontSize: 12, fontWeight: FontWeight.w500),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  time,
+                  style: TextStyle(
+                      color: s.faint,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500),
+                ),
+                if (contact.muted || contact.pinned) ...[
+                  const SizedBox(height: 5),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (contact.muted)
+                        Icon(Icons.notifications_off_rounded,
+                            size: 14, color: s.faint),
+                      if (contact.pinned)
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4),
+                          child: Icon(Icons.push_pin_rounded,
+                              size: 13, color: s.faint),
+                        ),
+                    ],
+                  ),
+                ],
+              ],
             ),
           ],
         ),
@@ -394,6 +447,153 @@ class _Empty extends StatelessWidget {
               textAlign: TextAlign.center,
               style: TextStyle(color: s.muted, fontSize: 14, height: 1.45),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Long-press a chat: mute, pin, archive, delete.
+void _chatActions(BuildContext context, WidgetRef ref, Contact c) {
+  final s = KScheme.of(context);
+  final db = ref.read(dbProvider);
+  showModalBottomSheet(
+    context: context,
+    backgroundColor: s.panel,
+    shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+    builder: (ctx) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 6),
+            child: Row(
+              children: [
+                Text(c.name,
+                    style: TextStyle(
+                        color: s.text,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700)),
+              ],
+            ),
+          ),
+          Divider(height: 1, color: s.line),
+          ListTile(
+            leading: Icon(
+                c.pinned
+                    ? Icons.push_pin_rounded
+                    : Icons.push_pin_outlined,
+                color: KColors.teal),
+            title: Text(c.pinned ? 'Unpin chat' : 'Pin chat',
+                style: TextStyle(color: s.text)),
+            onTap: () {
+              Navigator.pop(ctx);
+              db.setPinned(c.id, !c.pinned);
+            },
+          ),
+          ListTile(
+            leading: Icon(
+                c.muted
+                    ? Icons.notifications_off_rounded
+                    : Icons.notifications_none_rounded,
+                color: KColors.teal),
+            title: Text(c.muted ? 'Unmute' : 'Mute notifications',
+                style: TextStyle(color: s.text)),
+            onTap: () {
+              Navigator.pop(ctx);
+              db.setMuted(c.id, !c.muted);
+            },
+          ),
+          ListTile(
+            leading: Icon(
+                c.archived
+                    ? Icons.unarchive_outlined
+                    : Icons.archive_outlined,
+                color: KColors.teal),
+            title: Text(c.archived ? 'Unarchive' : 'Archive chat',
+                style: TextStyle(color: s.text)),
+            onTap: () {
+              Navigator.pop(ctx);
+              db.setArchived(c.id, !c.archived);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.delete_outline_rounded,
+                color: KColors.danger),
+            title: const Text('Delete chat',
+                style: TextStyle(color: KColors.danger)),
+            onTap: () async {
+              Navigator.pop(ctx);
+              final ok = await showDialog<bool>(
+                context: context,
+                builder: (d) => AlertDialog(
+                  backgroundColor: s.panel,
+                  title: Text('Delete this chat?',
+                      style: TextStyle(color: s.text)),
+                  content: Text(
+                      'Messages with ${c.name} will be removed from this phone.',
+                      style: TextStyle(color: s.muted)),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(d, false),
+                      child:
+                          Text('Cancel', style: TextStyle(color: s.muted)),
+                    ),
+                    TextButton(
+                      onPressed: () => Navigator.pop(d, true),
+                      child: const Text('Delete',
+                          style: TextStyle(
+                              color: KColors.danger,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                ),
+              );
+              if (ok == true) await db.clearMessages(c.id);
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    ),
+  );
+}
+
+/// Row that toggles between normal and archived chats.
+class _ArchivedBar extends StatelessWidget {
+  final int count;
+  final bool showing;
+  final VoidCallback onTap;
+  const _ArchivedBar({
+    required this.count,
+    required this.showing,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final s = KScheme.of(context);
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+        child: Row(
+          children: [
+            Icon(showing ? Icons.arrow_back_rounded : Icons.archive_outlined,
+                color: KColors.teal, size: 21),
+            const SizedBox(width: 14),
+            Text(showing ? 'Back to chats' : 'Archived',
+                style: TextStyle(
+                    color: s.text,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600)),
+            const Spacer(),
+            if (!showing)
+              Text('$count',
+                  style: TextStyle(color: s.muted, fontSize: 13)),
           ],
         ),
       ),

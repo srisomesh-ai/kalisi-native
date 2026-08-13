@@ -398,6 +398,18 @@ class _Actions extends StatelessWidget {
                   onTap: () => Navigator.of(context).pop('copy'),
                 ),
               _Item(
+                icon: Icons.forward_rounded,
+                label: 'Forward',
+                onTap: () => Navigator.of(context).pop('forward'),
+              ),
+              _Item(
+                icon: message.starred
+                    ? Icons.star_rounded
+                    : Icons.star_border_rounded,
+                label: message.starred ? 'Unstar' : 'Star',
+                onTap: () => Navigator.of(context).pop('star'),
+              ),
+              _Item(
                 icon: Icons.delete_outline_rounded,
                 label: mine ? 'Delete for everyone' : 'Delete for me',
                 danger: true,
