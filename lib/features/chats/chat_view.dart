@@ -61,6 +61,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
     // no alerts while this chat is on screen
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(openChatIdProvider.notifier).state = widget.contact.id;
+      ref.read(openChatKalIdProvider.notifier).state = widget.contact.kalId;
     });
     _input.addListener(_onTyping);
   }
@@ -82,6 +83,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
     Future.microtask(() {
       try {
         ref.read(openChatIdProvider.notifier).state = null;
+        ref.read(openChatKalIdProvider.notifier).state = null;
       } catch (_) {}
     });
     _input.removeListener(_onTyping);

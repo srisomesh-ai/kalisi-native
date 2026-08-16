@@ -106,6 +106,9 @@ final goToTabProvider = StateProvider<int?>((ref) => null);
 /// Bumped by the poller so pending contact requests refresh on their own.
 final requestsTickProvider = StateProvider<int>((ref) => 0);
 
+/// KAL-id of the chat on screen, so server pushes can be matched to it.
+final openChatKalIdProvider = StateProvider<String?>((ref) => null);
+
 /// Contact id of the chat currently on screen (no alerts for it).
 final openChatIdProvider = StateProvider<String?>((ref) => null);
 

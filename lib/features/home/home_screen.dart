@@ -30,6 +30,17 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (me != null) {
         PushService.registerToken(ref.read(apiProvider), me.kalId, me.token);
       }
+
+      // While the app is open, don't raise a banner for the chat already on
+      // screen, or for a muted chat.
+      PushService.suppress = (data) {
+        final from = data['from']?.toString() ?? data['kal_id']?.toString();
+        if (from == null) return false;
+        final openId = ref.read(openChatIdProvider);
+        if (openId == null) return false;
+        final contact = ref.read(openChatKalIdProvider);
+        return contact != null && contact == from;
+      };
     });
   }
 

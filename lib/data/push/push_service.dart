@@ -26,6 +26,10 @@ class PushService {
   static final _local = FlutterLocalNotificationsPlugin();
   static bool _inited = false;
 
+  /// Decides whether a push arriving while the app is open should be shown.
+  /// Set by the app so this class stays free of app state.
+  static bool Function(Map<String, dynamic> data)? suppress;
+
   /// Initialize Firebase + local notifications. Safe to call once at startup.
   static Future<void> init() async {
     if (_inited) return;
@@ -61,6 +65,10 @@ class PushService {
       // show a heads-up notification when a message arrives in foreground
       FirebaseMessaging.onMessage.listen((msg) {
         final n = msg.notification;
+        // The app is open. Stay quiet if the message is for the chat already
+        // on screen, or for a chat the user muted — otherwise it would pop a
+        // banner over the very conversation being read.
+        if (suppress?.call(msg.data) == true) return;
         if (n != null) {
           _local.show(
             n.hashCode,
