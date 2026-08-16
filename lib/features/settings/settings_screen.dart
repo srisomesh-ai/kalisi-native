@@ -1,8 +1,11 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
+import 'package:image_cropper/image_cropper.dart';
 import '../../theme/colors.dart';
 import '../../app/providers.dart';
 import '../../data/crypto/kalisi_crypto.dart';
@@ -196,33 +199,117 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     super.dispose();
   }
 
+  /// Choose where the picture comes from, then crop it.
   Future<void> _pickPhoto() async {
+    final s = KScheme.of(context);
+    final src = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: s.panel,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            ListTile(
+              leading:
+                  const Icon(Icons.photo_library_rounded, color: KColors.teal),
+              title: Text('Choose from gallery',
+                  style: TextStyle(color: s.text)),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            ListTile(
+              leading:
+                  const Icon(Icons.photo_camera_rounded, color: KColors.teal),
+              title: Text('Take a photo', style: TextStyle(color: s.text)),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (src == null) return;
+
     try {
-      final picker = ImagePicker();
-      final file = await picker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 400,
-        maxHeight: 400,
-        imageQuality: 70,
+      final picked = await ImagePicker().pickImage(
+        source: src,
+        // pick at a good size — the crop step decides the final framing
+        maxWidth: 1600,
+        maxHeight: 1600,
       );
-      if (file == null) return;
+      if (picked == null || !mounted) return;
+
+      // Crop and adjust: square, with zoom and rotate.
+      final cropped = await ImageCropper().cropImage(
+        sourcePath: picked.path,
+        aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
+        compressFormat: ImageCompressFormat.jpg,
+        compressQuality: 80,
+        maxWidth: 512,
+        maxHeight: 512,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Adjust photo',
+            toolbarColor: KColors.teal,
+            toolbarWidgetColor: Colors.white,
+            statusBarColor: KColors.teal,
+            backgroundColor: Colors.black,
+            activeControlsWidgetColor: KColors.teal,
+            cropStyle: CropStyle.circle,
+            lockAspectRatio: true,
+            hideBottomControls: false,
+            showCropGrid: false,
+          ),
+          IOSUiSettings(
+            title: 'Adjust photo',
+            aspectRatioLockEnabled: true,
+            cropStyle: CropStyle.circle,
+          ),
+        ],
+      );
+      if (cropped == null || !mounted) return;
+
       setState(() => _busy = true);
-      final bytes = await file.readAsBytes();
+      var bytes = await File(cropped.path).readAsBytes();
+
+      // Shrink further if it's still heavy, rather than refusing the photo.
       if (bytes.length > 150000) {
+        final smaller = await FlutterImageCompress.compressWithFile(
+          cropped.path,
+          minWidth: 400,
+          minHeight: 400,
+          quality: 70,
+        );
+        if (smaller != null) bytes = smaller;
+      }
+      if (bytes.length > 250000) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Picture too large, try another')),
+            const SnackBar(content: Text('That picture is too large')),
           );
         }
         return;
       }
+
       final dataUrl = 'data:image/jpeg;base64,${base64Encode(bytes)}';
       final me = ref.read(activePersonaProvider).valueOrNull;
       if (me == null) return;
       await ref.read(dbProvider).updateProfile(me.id, avatar: dataUrl);
       ref.invalidate(activePersonaProvider);
       await _pushToServer(avatar: dataUrl);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile picture updated')),
+        );
+      }
     } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not use that picture')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }

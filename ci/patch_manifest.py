@@ -60,7 +60,16 @@ if "<queries>" not in s:
     </queries>"""
     s = re.sub(r"(<manifest[^>]*>)", r"\1" + queries, s, count=1)
 
-# 4) app label
+# 4) image_cropper needs its activity declared, or cropping crashes
+if "UCropActivity" not in s:
+    ucrop = """
+        <activity
+            android:name="com.yalantis.ucrop.UCropActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />"""
+    s = re.sub(r"(<application[^>]*>)", r"\1" + ucrop, s, count=1)
+
+# 5) app label
 s = s.replace('android:label="kalisi"', 'android:label="Kalisi"')
 
 open(path, "w").write(s)

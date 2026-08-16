@@ -31,6 +31,15 @@ if "desugar_jdk_libs" not in s:
     else:
         s += '\n\ndependencies {\n    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")\n}\n'
 
+# 2b) image_cropper's UCropActivity uses an AppCompat theme
+if "androidx.appcompat" not in s:
+    if re.search(r"\ndependencies\s*\{", s):
+        s = re.sub(r"(\ndependencies\s*\{)",
+                   r'\1\n    implementation("androidx.appcompat:appcompat:1.7.0")',
+                   s, count=1)
+    else:
+        s += '\n\ndependencies {\n    implementation("androidx.appcompat:appcompat:1.7.0")\n}\n'
+
 # 3) google-services plugin (Firebase)
 if "com.google.gms.google-services" not in s:
     s = re.sub(r'(plugins\s*\{)',
