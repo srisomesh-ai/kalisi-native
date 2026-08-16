@@ -646,6 +646,31 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
             ),
           ),
 
+          // caption over the photo
+          if (item.caption != null)
+            Positioned(
+              left: 20,
+              right: 20,
+              bottom: 150,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.42),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(
+                  item.caption!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      height: 1.35),
+                ),
+              ),
+            ),
+
           // music badge
           if (item.hasMusic)
             Positioned(

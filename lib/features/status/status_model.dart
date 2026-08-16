@@ -37,15 +37,24 @@ class StatusItem {
   String? get remoteUrl => isRemote ? payload.substring(5) : null;
 
   /// A photo with a track behind it is packed as 'mix:<base64 json>'.
-  bool get hasMusic => payload.startsWith('mix:');
+  bool get isMixed => payload.startsWith('mix:');
+  bool get hasMusic => isMixed && (mixed?['audio']?.isNotEmpty ?? false);
+
+  /// Caption written over a photo status.
+  String? get caption {
+    final c = mixed?['caption'];
+    return (c == null || c.isEmpty) ? null : c;
+  }
 
   Map<String, String>? get mixed {
     if (!hasMusic) return null;
     try {
       final j = jsonDecode(utf8.decode(base64Decode(payload.substring(4))));
+      final m = j as Map;
       return {
-        'img': '${(j as Map)['img']}',
-        'audio': '${j['audio']}',
+        'img': '${m['img'] ?? ''}',
+        if (m['audio'] != null) 'audio': '${m['audio']}',
+        if (m['caption'] != null) 'caption': '${m['caption']}',
       };
     } catch (_) {
       return null;
@@ -53,7 +62,7 @@ class StatusItem {
   }
 
   /// The image to draw, whichever form the status took.
-  String get imagePayload => hasMusic ? (mixed?['img'] ?? '') : payload;
+  String get imagePayload => isMixed ? (mixed?['img'] ?? '') : payload;
 
   /// Small badge shown on the card so you know the type before opening.
   String? get kindBadge => switch (type) {

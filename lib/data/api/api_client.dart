@@ -55,10 +55,14 @@ class ApiClient {
     required String name,
     required String username,
     required String pubkey, // JSON string of the public JWK
+    String? verifier,       // optional password recovery
+    String? salt,
   }) =>
       call('register', {
         'name': name,
         'username': username,
+        if (verifier != null) 'verifier': verifier,
+        if (salt != null) 'salt': salt,
         // Server expects pubkey as an OBJECT (is_array check), so decode the JWK string.
         'pubkey': jsonDecode(pubkey),
       });
@@ -213,6 +217,22 @@ class ApiClient {
     required String gid,
   }) =>
       call('group_info', {'kal_id': kalId, 'token': token, 'gid': gid});
+
+  /// Ask for the salt tied to a username, so the key can be rebuilt.
+  Future<Map<String, dynamic>> recoverSalt({required String username}) =>
+      call('recover_salt', {'username': username});
+
+  /// Sign in on a new phone with the derived verifier.
+  Future<Map<String, dynamic>> recoverLogin({
+    required String username,
+    required String verifier,
+    required Map<String, dynamic> pubkey,
+  }) =>
+      call('recover_login', {
+        'username': username,
+        'verifier': verifier,
+        'pubkey': pubkey,
+      });
 
   /// Current name/photo for a list of contacts.
   Future<Map<String, dynamic>> contactsProfiles({

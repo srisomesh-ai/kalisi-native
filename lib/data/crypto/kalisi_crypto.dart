@@ -38,6 +38,67 @@ class KalisiCrypto {
   static Future<({String privateJwk, String publicJwk})>
       generateKeyPair() async => generateKeyPairSync();
 
+  // ---- Recovery: a key that can be rebuilt from a password ----
+
+  /// A random salt for a new account, base64.
+  static String newSalt() => _b64(_randomBytes(16));
+
+  /// Stretch a password into 32 bytes using PBKDF2-SHA256.
+  static Uint8List _stretch(String password, String saltB64, int iterations) {
+    final salt = _unb64(saltB64);
+    final params = Pbkdf2Parameters(salt, iterations, 32);
+    final kdf = PBKDF2KeyDerivator(HMac(SHA256Digest(), 64))..init(params);
+    return kdf.process(Uint8List.fromList(utf8.encode(password)));
+  }
+
+  /// Rebuild the identity key from a username and password.
+  ///
+  /// The same inputs always give the same key, so signing in on a new phone
+  /// restores the account. The private key never leaves the device.
+  static ({String privateJwk, String publicJwk}) keyPairFromPassword(
+    String username,
+    String password,
+    String saltB64,
+  ) {
+    // bind the key to the username so the same password on two accounts
+    // doesn't produce the same key
+    final seed = _stretch('kalisi:$username:$password', saltB64, 120000);
+
+    // turn the seed into a valid P-256 private scalar
+    var d = _bytesToBigInt(seed);
+    final n = _domain.n;
+    d = d % (n - BigInt.one) + BigInt.one;
+
+    final priv = ECPrivateKey(d, _domain);
+    final q = _domain.G * d;
+    final pub = ECPublicKey(q, _domain);
+
+    final x = _fieldToBytes(pub.Q!.x!.toBigInteger()!);
+    final y = _fieldToBytes(pub.Q!.y!.toBigInteger()!);
+    final dB = _fieldToBytes(priv.d!);
+
+    final pubJwk = {'kty': 'EC', 'crv': 'P-256', 'x': _b64u(x), 'y': _b64u(y)};
+    final privJwk = {...pubJwk, 'd': _b64u(dB)};
+    return (privateJwk: jsonEncode(privJwk), publicJwk: jsonEncode(pubJwk));
+  }
+
+  /// What the server stores to check the password. Derived separately from
+  /// the key, so holding it reveals nothing about the key itself.
+  static String verifierFor(
+    String username,
+    String password,
+    String saltB64,
+  ) =>
+      _b64(_stretch('kalisi-verify:$username:$password', saltB64, 60000));
+
+  static BigInt _bytesToBigInt(Uint8List b) {
+    var r = BigInt.zero;
+    for (final byte in b) {
+      r = (r << 8) | BigInt.from(byte);
+    }
+    return r;
+  }
+
   /// Derive the 32-byte shared AES key (raw ECDH X coordinate).
   static Uint8List _sharedKeyBytes(String myPrivateJwk, String theirPublicJwk) {
     final myJwk = jsonDecode(myPrivateJwk) as Map<String, dynamic>;

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/colors.dart';
 import '../settings/backup_screen.dart';
+import 'sign_in_screen.dart';
 import '../../app/providers.dart';
 import '../../data/api/api_client.dart';
 import '../../widgets/k_button.dart';
@@ -17,6 +18,8 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final _name = TextEditingController();
   final _username = TextEditingController();
+  final _password = TextEditingController();
+  bool _showPassword = false;
   bool _busy = false;
   bool _foundBackup = false;
   String? _backupWho;
@@ -62,6 +65,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   void dispose() {
     _name.dispose();
     _username.dispose();
+    _password.dispose();
     super.dispose();
   }
 
@@ -77,6 +81,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       setState(() => _error = 'Username: 3–20 letters, numbers or _');
       return;
     }
+    final password = _password.text;
+    if (password.length < 8) {
+      setState(() =>
+          _error = 'Password must be at least 8 characters');
+      return;
+    }
     setState(() {
       _busy = true;
       _error = null;
@@ -84,7 +94,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     try {
       await ref
           .read(authRepoProvider)
-          .createIdentity(name: name, username: username);
+          .createIdentity(
+              name: name, username: username, password: password);
       ref.read(authStateProvider.notifier).state++;
       // save a backup straight away so the account is never unprotected
       try {
@@ -165,6 +176,37 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 Text(_error!,
                     style: const TextStyle(color: KColors.ember, fontSize: 13.5)),
               ],
+              const SizedBox(height: 14),
+              TextField(
+                controller: _password,
+                obscureText: !_showPassword,
+                style: TextStyle(color: s.text, fontSize: 16),
+                decoration: InputDecoration(
+                  hintText: 'Password',
+                  hintStyle: TextStyle(color: s.faint),
+                  filled: true,
+                  fillColor: s.panel2,
+                  prefixIcon: Icon(Icons.lock_outline_rounded, color: s.faint),
+                  suffixIcon: IconButton(
+                    onPressed: () =>
+                        setState(() => _showPassword = !_showPassword),
+                    icon: Icon(
+                        _showPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                        color: s.faint),
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                  'Your password gets your account back if you lose this phone. Nobody can reset it for you, so pick something you will remember.',
+                  style:
+                      TextStyle(color: s.faint, fontSize: 12, height: 1.45)),
               const SizedBox(height: 20),
               KButton(
                 label: _busy ? 'Creating…' : 'Create my Kalisi ID',
@@ -176,6 +218,38 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 child: Text('No OTP, no SIM, no email to verify.',
                     style: TextStyle(color: s.faint, fontSize: 12.5)),
               ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(child: Divider(color: s.line)),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Text('already have an account?',
+                        style: TextStyle(color: s.faint, fontSize: 12.5)),
+                  ),
+                  Expanded(child: Divider(color: s.line)),
+                ],
+              ),
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                onPressed: _busy
+                    ? null
+                    : () => Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const SignInScreen(),
+                        )),
+                icon: const Icon(Icons.login_rounded, size: 19),
+                label: const Text('Sign in with username',
+                    style:
+                        TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: KColors.teal,
+                  side: const BorderSide(color: KColors.teal, width: 1.4),
+                  minimumSize: const Size.fromHeight(52),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+
               // A backup found on this phone — one tap to come back.
               if (_foundBackup) ...[
                 const SizedBox(height: 22),

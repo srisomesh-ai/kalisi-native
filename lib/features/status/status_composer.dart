@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:video_compress/video_compress.dart';
+import 'package:video_player/video_player.dart';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../../theme/colors.dart';
@@ -170,20 +171,27 @@ class StatusComposer {
         return;
       }
 
-      // Offer to put a track behind it, like a short.
-      final music = await Navigator.of(context).push<String?>(
+      // Caption it, and optionally put a track behind it.
+      final result = await Navigator.of(context).push<Map<String, String>>(
         MaterialPageRoute(
           builder: (_) => PhotoStatusScreen(imageBytes: bytes),
         ),
       );
-      if (music == null || !context.mounted) return;   // cancelled
+      if (result == null || !context.mounted) return;   // cancelled
 
+      final music = result['audio'] ?? '';
+      final caption = result['caption'] ?? '';
       final dataUrl = 'data:image/jpeg;base64,${base64Encode(bytes)}';
-      if (music.isEmpty) {
+
+      if (music.isEmpty && caption.isEmpty) {
         await _post(context, ref, type: 'photo', payload: dataUrl);
       } else {
-        // photo + track travel together as one payload
-        final combined = jsonEncode({'img': dataUrl, 'audio': music});
+        // photo, caption and track travel together as one payload
+        final combined = jsonEncode({
+          'img': dataUrl,
+          if (music.isNotEmpty) 'audio': music,
+          if (caption.isNotEmpty) 'caption': caption,
+        });
         await _post(context, ref,
             type: 'photo', payload: 'mix:${base64Encode(utf8.encode(combined))}');
       }
@@ -254,10 +262,16 @@ class StatusComposer {
       } catch (_) {}
 
       final path = info?.path ?? picked.path;
-      final bytes = await File(path).readAsBytes();
-
       if (context.mounted) Navigator.of(context).pop(); // close progress
+      if (!context.mounted) return;
 
+      // Watch it back and confirm before it goes out.
+      final ok = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => VideoPreviewScreen(path: path)),
+      );
+      if (ok != true || !context.mounted) return;
+
+      final bytes = await File(path).readAsBytes();
       // ~19MB of actual video; base64 adds about a third
       if (bytes.length > 19000000) {
         if (context.mounted) {
@@ -636,6 +650,7 @@ class PhotoStatusScreen extends StatefulWidget {
 
 class _PhotoStatusScreenState extends State<PhotoStatusScreen> {
   final _player = AudioPlayer();
+  final _caption = TextEditingController();
   String? _trackName;
   String? _trackData;
   bool _playing = false;
@@ -644,6 +659,7 @@ class _PhotoStatusScreenState extends State<PhotoStatusScreen> {
   @override
   void dispose() {
     _player.dispose();
+    _caption.dispose();
     super.dispose();
   }
 
@@ -782,6 +798,32 @@ class _PhotoStatusScreenState extends State<PhotoStatusScreen> {
               ],
             ),
           ),
+          // caption
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.14),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextField(
+                controller: _caption,
+                maxLines: 3,
+                minLines: 1,
+                maxLength: 200,
+                style: const TextStyle(color: Colors.white, fontSize: 15.5),
+                decoration: const InputDecoration(
+                  hintText: 'Add a caption…',
+                  hintStyle: TextStyle(color: Colors.white60),
+                  border: InputBorder.none,
+                  counterText: '',
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(vertical: 13),
+                ),
+              ),
+            ),
+          ),
           SafeArea(
             top: false,
             child: Padding(
@@ -789,8 +831,10 @@ class _PhotoStatusScreenState extends State<PhotoStatusScreen> {
               child: SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
-                  onPressed: () =>
-                      Navigator.of(context).pop(_trackData ?? ''),
+                  onPressed: () => Navigator.of(context).pop({
+                    'audio': _trackData ?? '',
+                    'caption': _caption.text.trim(),
+                  }),
                   icon: const Icon(Icons.send_rounded, size: 19),
                   label: const Text('Share to status',
                       style: TextStyle(
@@ -800,6 +844,164 @@ class _PhotoStatusScreenState extends State<PhotoStatusScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 15),
                   ),
                 ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Watch a video back before sharing it.
+class VideoPreviewScreen extends StatefulWidget {
+  final String path;
+  const VideoPreviewScreen({super.key, required this.path});
+  @override
+  State<VideoPreviewScreen> createState() => _VideoPreviewScreenState();
+}
+
+class _VideoPreviewScreenState extends State<VideoPreviewScreen> {
+  VideoPlayerController? _c;
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final c = VideoPlayerController.file(File(widget.path));
+      _c = c;
+      await c.initialize();
+      await c.setLooping(true);
+      await c.play();
+      if (mounted) setState(() => _ready = true);
+    } catch (_) {
+      if (mounted) setState(() => _ready = true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _c?.dispose();
+    super.dispose();
+  }
+
+  void _toggle() {
+    final c = _c;
+    if (c == null) return;
+    setState(() => c.value.isPlaying ? c.pause() : c.play());
+  }
+
+  String get _length {
+    final d = _c?.value.duration ?? Duration.zero;
+    return '${d.inSeconds}s';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final playing = _c?.value.isPlaying ?? false;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: const Text('Your video'),
+        actions: [
+          if (_ready && _c != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 14),
+              child: Center(
+                child: Text(_length,
+                    style: const TextStyle(
+                        color: Colors.white70, fontSize: 13.5)),
+              ),
+            ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: Center(
+              child: !_ready
+                  ? const CircularProgressIndicator(color: Colors.white)
+                  : (_c?.value.isInitialized ?? false)
+                      ? GestureDetector(
+                          onTap: _toggle,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              AspectRatio(
+                                aspectRatio: _c!.value.aspectRatio,
+                                child: VideoPlayer(_c!),
+                              ),
+                              if (!playing)
+                                Container(
+                                  width: 64,
+                                  height: 64,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.45),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(Icons.play_arrow_rounded,
+                                      color: Colors.white, size: 34),
+                                ),
+                            ],
+                          ),
+                        )
+                      : const Text('Could not play this video',
+                          style: TextStyle(color: Colors.white70)),
+            ),
+          ),
+          if (_c?.value.isInitialized ?? false)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: VideoProgressIndicator(
+                _c!,
+                allowScrubbing: true,
+                colors: const VideoProgressColors(
+                  playedColor: KColors.teal,
+                  bufferedColor: Colors.white24,
+                  backgroundColor: Colors.white12,
+                ),
+              ),
+            ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(false),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                        side: const BorderSide(color: Colors.white24),
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                      ),
+                      child: const Text('Choose another'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: FilledButton.icon(
+                      onPressed: () => Navigator.of(context).pop(true),
+                      icon: const Icon(Icons.send_rounded, size: 19),
+                      label: const Text('Share to status',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w800, fontSize: 15.5)),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: KColors.teal,
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
