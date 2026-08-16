@@ -82,6 +82,9 @@ class Messages extends Table {
   IntColumn get fileSize => integer().nullable()();
   /// When a message was last edited (null if never).
   IntColumn get editedAt => integer().nullable()();
+  /// Set when this message is a reply to someone's status.
+  TextColumn get statusQuote => text().nullable()();
+  TextColumn get statusThumb => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -95,7 +98,7 @@ class KalisiDb extends _$KalisiDb {
   KalisiDb.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -134,6 +137,10 @@ class KalisiDb extends _$KalisiDb {
             await m.addColumn(messages, messages.fileName);
             await m.addColumn(messages, messages.fileSize);
             await m.addColumn(messages, messages.editedAt);
+          }
+          if (from < 9) {
+            await m.addColumn(messages, messages.statusQuote);
+            await m.addColumn(messages, messages.statusThumb);
           }
         },
       );

@@ -25,6 +25,8 @@ class MessageRepository {
     required String text,
     Message? replyTo,
     String? replyToWho,
+    String? statusQuote,   // replying to a status
+    String? statusThumb,
     bool burn = false,
     int timer = 0,
   }) async {
@@ -50,7 +52,9 @@ class MessageRepository {
               'voice' => '🎤 Voice message',
               _ => replyTo.body,
             }),
-      replyToWho: Value(replyTo == null ? null : replyToWho),
+      replyToWho: Value(replyTo == null ? replyToWho : replyToWho),
+      statusQuote: Value(statusQuote),
+      statusThumb: Value(statusThumb),
     ));
 
     // Need the recipient's public key to encrypt.
@@ -80,6 +84,9 @@ class MessageRepository {
                 _ => replyTo.body,
               },
             },
+      'statusQuote': statusQuote,
+      'statusThumb': statusThumb,
+      'statusWho': statusQuote == null ? null : replyToWho,
       'cid': cid,
       'ts': ts,
       'timer': timer,
@@ -785,7 +792,11 @@ class MessageRepository {
           fileSize: Value((obj['fileSize'] as num?)?.toInt()),
           replyToId: Value(rep is Map ? rep['id']?.toString() : null),
           replyToText: Value(rep is Map ? rep['text']?.toString() : null),
-          replyToWho: Value(rep is Map ? rep['who']?.toString() : null),
+          replyToWho: Value(rep is Map
+              ? rep['who']?.toString()
+              : obj['statusWho']?.toString()),
+          statusQuote: Value(obj['statusQuote']?.toString()),
+          statusThumb: Value(obj['statusThumb']?.toString()),
           ts: (obj['ts'] is int) ? obj['ts'] as int : ts,
           status: const Value('delivered'),
           burn: Value(obj['burn'] == true),

@@ -732,6 +732,10 @@ class _BubbleState extends ConsumerState<_Bubble> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Reply to someone's status — shown as a quote card
+                      // with a thumbnail, not glued into the text.
+                      if (message.statusQuote != null)
+                        _StatusQuote(message: message),
                       if (message.replyToId != null)
                         Container(
                           margin: const EdgeInsets.only(bottom: 5),
@@ -2443,6 +2447,82 @@ class _PhotoPreviewState extends State<_PhotoPreview> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+/// The status a message is replying to, shown above the reply text.
+class _StatusQuote extends StatelessWidget {
+  final Message message;
+  const _StatusQuote({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = KScheme.of(context);
+    final thumb = Avatar.decode(message.statusThumb);
+    final who = message.replyToWho;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      decoration: BoxDecoration(
+        color: Colors.black.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(10),
+        border: const Border(
+          left: BorderSide(color: KColors.amber, width: 3),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Flexible(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.auto_awesome_rounded,
+                            size: 12, color: KColors.amberInk),
+                        const SizedBox(width: 5),
+                        Flexible(
+                          child: Text(
+                            who == null ? 'Status' : "$who's status",
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                color: KColors.amberInk,
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      message.statusQuote ?? '',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          color: s.muted, fontSize: 12.5, height: 1.3),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (thumb != null)
+              SizedBox(
+                width: 46,
+                child: Image.memory(thumb, fit: BoxFit.cover),
+              ),
+          ],
+        ),
       ),
     );
   }

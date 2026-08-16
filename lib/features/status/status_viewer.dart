@@ -242,6 +242,21 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
     if (picked != null) await _react(picked);
   }
 
+  /// A short description of the status being replied to.
+  String _quoteLabel() {
+    if (item.isText) {
+      final t = item.payload.trim();
+      return t.length > 70 ? '${t.substring(0, 70)}…' : t;
+    }
+    if (item.caption != null) return item.caption!;
+    return switch (item.type) {
+      'photo' => 'Photo status',
+      'video' => 'Video status',
+      'voice' => 'Voice status',
+      _ => 'Status',
+    };
+  }
+
   Future<void> _sendReply() async {
     final text = _reply.text.trim();
     if (text.isEmpty) return;
@@ -258,12 +273,16 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
     }
     setState(() => _sending = true);
     try {
-      final quote = item.isText
-          ? '↩ "${item.payload.length > 60 ? '${item.payload.substring(0, 60)}…' : item.payload}"\n'
-          : '↩ (${item.type} status)\n';
-      await ref
-          .read(messageRepoProvider)
-          .sendText(me: me, contact: contact, text: '$quote$text');
+      // Send it as a proper quoted reply rather than gluing the quote into
+      // the message text, so it renders like any other reply.
+      await ref.read(messageRepoProvider).sendText(
+            me: me,
+            contact: contact,
+            text: text,
+            statusQuote: _quoteLabel(),
+            statusThumb: item.isPhoto ? item.imagePayload : null,
+            replyToWho: item.name,
+          );
       _reply.clear();
       if (mounted) {
         FocusScope.of(context).unfocus();
@@ -368,7 +387,9 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
         await repo.sendText(
           me: me,
           contact: chosen,
-          text: '↩ ${item.name}\'s status:\n${item.payload}',
+          text: item.payload,
+          statusQuote: 'Shared from ${item.name}',
+          replyToWho: item.name,
         );
       }
       if (mounted) {
