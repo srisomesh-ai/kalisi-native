@@ -267,7 +267,8 @@ class _Thumb extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bytes = item.isPhoto ? Avatar.decode(item.payload) : null;
+    final bytes =
+        (item.isPhoto && !item.isRemote) ? Avatar.decode(item.payload) : null;
     final pair = KColors.avatarPairFor(item.kalId);
     return Container(
       width: 56,
@@ -285,9 +286,16 @@ class _Thumb extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: bytes != null
           ? Image.memory(bytes, fit: BoxFit.cover)
+          : (item.isRemote && (item.isPhoto || item.isVideo))
+              ? Image.network(item.remoteUrl!, fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const SizedBox())
           : Center(
               child: Text(
-                item.isVoice ? '🎤' : 'Aa',
+                item.isVideo
+                    ? '▶'
+                    : item.isVoice
+                        ? '🎤'
+                        : 'Aa',
                 style: const TextStyle(
                     color: Colors.white,
                     fontSize: 17,
@@ -392,7 +400,9 @@ class _PersonCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final latest = items.last;
     final unseen = items.any((s) => !s.seen);
-    final bytes = latest.isPhoto ? Avatar.decode(latest.payload) : null;
+    final bytes = (latest.isPhoto && !latest.isRemote)
+        ? Avatar.decode(latest.payload)
+        : null;
     final pair = KColors.avatarPairFor(latest.kalId);
 
     return GestureDetector(
@@ -405,7 +415,19 @@ class _PersonCard extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (bytes != null)
+            if (latest.isRemote && (latest.isPhoto || latest.isVideo))
+              Image.network(latest.remoteUrl!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => DecoratedBox(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: pair,
+                          ),
+                        ),
+                      ))
+            else if (bytes != null)
               Image.memory(bytes, fit: BoxFit.cover)
             else
               DecoratedBox(
@@ -430,8 +452,9 @@ class _PersonCard extends StatelessWidget {
                               height: 1.35),
                         ),
                       )
-                    : const Center(
-                        child: Text('🎤', style: TextStyle(fontSize: 34))),
+                    : Center(
+                        child: Text(latest.isVideo ? '▶' : '🎤',
+                            style: const TextStyle(fontSize: 34))),
               ),
             const DecoratedBox(
               decoration: BoxDecoration(

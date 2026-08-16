@@ -28,7 +28,12 @@ class StatusItem {
 
   bool get isPhoto => type == 'photo';
   bool get isVoice => type == 'voice';
+  bool get isVideo => type == 'video';
   bool get isText => type == 'text';
+
+  /// Large media is stored on the server; the payload is then 'file:<url>'.
+  bool get isRemote => payload.startsWith('file:');
+  String? get remoteUrl => isRemote ? payload.substring(5) : null;
 
   /// Small badge shown on the card so you know the type before opening.
   String? get kindBadge => switch (type) {

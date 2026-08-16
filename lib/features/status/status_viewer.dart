@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:video_player/video_player.dart';
 import '../../theme/colors.dart';
 import '../../app/providers.dart';
 import '../../data/db/database.dart';
@@ -27,6 +28,7 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
 
   int _i = 0;
   bool _paused = false;
+  VideoPlayerController? _video;
   bool _sending = false;
   String? _myReaction;
   int _reactionCount = 0;
@@ -47,6 +49,7 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
 
   @override
   void dispose() {
+    _disposeVideo();
     _progress.dispose();
     _reply.dispose();
     _player.dispose();
@@ -54,12 +57,62 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
   }
 
   void _open() {
-    _progress
-      ..reset()
-      ..forward();
+    _disposeVideo();
     _markViewed();
     _loadReactions();
-    if (item.isVoice) _playVoice();
+    if (item.isVideo) {
+      _openVideo();          // the video drives its own timing
+    } else {
+      _progress
+        ..reset()
+        ..forward();
+      if (item.isVoice) _playVoice();
+    }
+  }
+
+  /// Videos play for their real length rather than the fixed 6 seconds.
+  Future<void> _openVideo() async {
+    final url = item.remoteUrl;
+    try {
+      final c = url != null
+          ? VideoPlayerController.networkUrl(Uri.parse(url))
+          : VideoPlayerController.file(await _videoFile());
+      _video = c;
+      await c.initialize();
+      if (!mounted) return;
+      setState(() {});
+      _progress.duration = c.value.duration.inMilliseconds > 0
+          ? c.value.duration
+          : _perStatus;
+      _progress
+        ..reset()
+        ..forward();
+      await c.play();
+    } catch (_) {
+      // couldn't load it — fall back to the normal timing
+      if (mounted) {
+        _progress
+          ..duration = _perStatus
+          ..reset()
+          ..forward();
+      }
+    }
+  }
+
+  Future<File> _videoFile() async {
+    final bytes = Avatar.decode(item.payload);
+    final p = '${Directory.systemTemp.path}/kstatus_${item.id}.mp4';
+    final f = File(p);
+    if (!f.existsSync() && bytes != null) {
+      await f.writeAsBytes(bytes, flush: true);
+    }
+    return f;
+  }
+
+  void _disposeVideo() {
+    _video?.dispose();
+    _video = null;
+    _progress.duration = _perStatus;
   }
 
   void _next() {
@@ -84,8 +137,10 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
     setState(() => _paused = down);
     if (down) {
       _progress.stop();
+      _video?.pause();
     } else {
       _progress.forward();
+      _video?.play();
     }
   }
 
@@ -449,7 +504,28 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
         children: [
           // content
           Positioned.fill(
-            child: bytes != null
+            child: item.isVideo
+                ? Container(
+                    color: Colors.black,
+                    child: Center(
+                      child: (_video?.value.isInitialized ?? false)
+                          ? AspectRatio(
+                              aspectRatio: _video!.value.aspectRatio,
+                              child: VideoPlayer(_video!),
+                            )
+                          : const CircularProgressIndicator(
+                              color: Colors.white),
+                    ),
+                  )
+                : item.isRemote && item.isPhoto
+                    ? Container(
+                        color: Colors.black,
+                        child: Center(
+                          child: Image.network(item.remoteUrl!,
+                              fit: BoxFit.contain),
+                        ),
+                      )
+                : bytes != null
                 ? Container(
                     color: Colors.black,
                     child: Center(

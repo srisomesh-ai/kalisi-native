@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:video_compress/video_compress.dart';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../../theme/colors.dart';
@@ -52,6 +53,12 @@ class StatusComposer {
                     colors: const [KColors.amber, Color(0xFFD9720F)],
                     onTap: () => Navigator.pop(ctx, 'voice'),
                   ),
+                  _Type(
+                    label: 'Video',
+                    icon: Icons.videocam_rounded,
+                    colors: const [Color(0xFFE4739A), Color(0xFFB03A63)],
+                    onTap: () => Navigator.pop(ctx, 'video'),
+                  ),
                 ],
               ),
             ],
@@ -72,6 +79,9 @@ class StatusComposer {
         await Navigator.of(context).push(MaterialPageRoute(
           builder: (_) => const VoiceStatusScreen(),
         ));
+        break;
+      case 'video':
+        await _postVideo(context, ref);
         break;
     }
   }
@@ -163,6 +173,92 @@ class StatusComposer {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not add that photo')),
+        );
+      }
+    }
+  }
+
+  // ---------- video ----------
+
+  static Future<void> _postVideo(BuildContext context, WidgetRef ref) async {
+    final s = KScheme.of(context);
+    final src = await showModalBottomSheet<ImageSource>(
+      context: context,
+      backgroundColor: s.panel,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.video_library_rounded,
+                  color: KColors.teal),
+              title: Text('Choose a video', style: TextStyle(color: s.text)),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            ListTile(
+              leading:
+                  const Icon(Icons.videocam_rounded, color: KColors.teal),
+              title: Text('Record a video', style: TextStyle(color: s.text)),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (src == null || !context.mounted) return;
+
+    try {
+      final picked = await ImagePicker().pickVideo(
+        source: src,
+        maxDuration: const Duration(seconds: 30),
+      );
+      if (picked == null || !context.mounted) return;
+
+      // Show progress — compressing a video takes a moment.
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const _Working(text: 'Preparing your video…'),
+      );
+
+      MediaInfo? info;
+      try {
+        info = await VideoCompress.compressVideo(
+          picked.path,
+          quality: VideoQuality.MediumQuality,
+          deleteOrigin: false,
+          includeAudio: true,
+        );
+      } catch (_) {}
+
+      final path = info?.path ?? picked.path;
+      final bytes = await File(path).readAsBytes();
+
+      if (context.mounted) Navigator.of(context).pop(); // close progress
+
+      // ~19MB of actual video; base64 adds about a third
+      if (bytes.length > 19000000) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('That video is too long — try under 30 seconds')),
+          );
+        }
+        return;
+      }
+
+      final dataUrl = 'data:video/mp4;base64,${base64Encode(bytes)}';
+      if (!context.mounted) return;
+      await _post(context, ref, type: 'video', payload: dataUrl);
+    } catch (_) {
+      if (context.mounted) {
+        Navigator.of(context).maybePop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not use that video')),
         );
       }
     }
@@ -468,6 +564,39 @@ class _VoiceStatusScreenState extends ConsumerState<VoiceStatusScreen> {
                 ),
               ),
             ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+
+/// Simple blocking progress dialog.
+class _Working extends StatelessWidget {
+  final String text;
+  const _Working({required this.text});
+  @override
+  Widget build(BuildContext context) {
+    final s = KScheme.of(context);
+    return Dialog(
+      backgroundColor: s.panel,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 26),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2.4, color: KColors.teal),
+            ),
+            const SizedBox(width: 16),
+            Flexible(
+              child: Text(text,
+                  style: TextStyle(color: s.text, fontSize: 14.5)),
+            ),
           ],
         ),
       ),
