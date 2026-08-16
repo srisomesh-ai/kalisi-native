@@ -7,6 +7,7 @@ import 'app/providers.dart';
 import 'data/push/push_service.dart';
 import 'features/onboarding/onboarding_screen.dart';
 import 'features/home/home_screen.dart';
+import 'features/splash/splash_gate.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,14 +28,14 @@ class KalisiApp extends ConsumerWidget {
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
       themeMode: themeMode,
-      home: const _Root(),
+      home: const SplashGate(child: _Root()),
     );
   }
 }
 
 /// Decides the first screen: onboarding if no active persona, else home.
 class _Root extends ConsumerWidget {
-  const _Root();
+  const _Root({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
