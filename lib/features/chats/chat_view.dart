@@ -160,6 +160,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
             kind: 'img',
             dataUrl: dataUrl,
             localPath: file.path,
+            burn: _burn,
           );
       _scrollToBottom();
     } catch (_) {
@@ -195,6 +196,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
             kind: 'img',
             dataUrl: dataUrl,
             localPath: file.path,
+            burn: _burn,
           );
       _scrollToBottom();
     } catch (_) {
@@ -1882,8 +1884,13 @@ class _BurnCoverState extends ConsumerState<_BurnCover> {
 
   Future<void> _reveal() async {
     setState(() => _revealed = true);
-    // let them read it, then burn
-    await Future.delayed(const Duration(seconds: 6));
+    // give longer for a photo or a voice note than for a line of text
+    final linger = switch (widget.message.kind) {
+      'img' => const Duration(seconds: 15),
+      'voice' => const Duration(seconds: 30),
+      _ => const Duration(seconds: 8),
+    };
+    await Future.delayed(linger);
     if (!mounted) return;
     final me = ref.read(activePersonaProvider).valueOrNull;
     await ref.read(dbProvider).markBurned(widget.message.id);
@@ -1899,24 +1906,64 @@ class _BurnCoverState extends ConsumerState<_BurnCover> {
   @override
   Widget build(BuildContext context) {
     final s = KScheme.of(context);
+    final m = widget.message;
+
     if (_revealed) {
-      return Text(widget.message.body ?? '',
-          style: TextStyle(color: s.text, fontSize: 15.5, height: 1.3));
+      // show the real thing — photo, voice, or text
+      switch (m.kind) {
+        case 'img':
+          return _ImageContent(dataUrl: m.body);
+        case 'voice':
+          return _VoiceContent(message: m);
+        default:
+          return Text(m.body ?? '',
+              style: TextStyle(color: s.text, fontSize: 16.5, height: 1.35));
+      }
     }
+
+    final label = switch (m.kind) {
+      'img' => 'Tap to view photo once',
+      'voice' => 'Tap to play once',
+      _ => 'Tap to view once',
+    };
+    final icon = switch (m.kind) {
+      'img' => Icons.photo_camera_back_rounded,
+      'voice' => Icons.mic_rounded,
+      _ => Icons.local_fire_department_rounded,
+    };
+
     return GestureDetector(
       onTap: _reveal,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.local_fire_department_rounded,
-              size: 19, color: KColors.amber),
-          const SizedBox(width: 7),
-          Text('Tap to view once',
-              style: TextStyle(
-                  color: KColors.amberInk,
-                  fontSize: 14.5,
-                  fontWeight: FontWeight.w600)),
-        ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: KColors.amberBg,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 18, color: KColors.amberInk),
+            ),
+            const SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(label,
+                    style: const TextStyle(
+                        color: KColors.amberInk,
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w600)),
+                Text('Disappears after viewing',
+                    style: TextStyle(color: s.faint, fontSize: 11.5)),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

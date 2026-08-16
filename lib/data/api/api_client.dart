@@ -255,6 +255,18 @@ class ApiClient {
         'allow_share': allowShare,
       });
 
+  /// Delete one of my own statuses.
+  Future<Map<String, dynamic>> statusDelete({
+    required String kalId,
+    required String token,
+    required int statusId,
+  }) =>
+      call('status_delete', {
+        'kal_id': kalId,
+        'token': token,
+        'status_id': statusId,
+      });
+
   /// Mark a status as viewed.
   Future<Map<String, dynamic>> statusView({
     required String kalId,

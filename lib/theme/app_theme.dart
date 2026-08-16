@@ -39,6 +39,16 @@ class AppTheme {
           letterSpacing: -0.3,
         ),
       ),
+      // Painted behind everything, so a keyboard resize or a page change
+      // never flashes the default white through.
+      dialogBackgroundColor: s.panel,
+      // Smooth, consistent page transitions on every Android version
+      pageTransitionsTheme: const PageTransitionsTheme(
+        builders: {
+          TargetPlatform.android: CupertinoPageTransitionsBuilder(),
+          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        },
+      ),
       dividerColor: s.line,
       iconTheme: IconThemeData(color: s.muted),
       splashColor: KColors.teal.withOpacity(0.08),

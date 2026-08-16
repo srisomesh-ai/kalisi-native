@@ -308,6 +308,63 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
     }
   }
 
+  /// Delete one of my own statuses.
+  Future<void> _deleteStatus() async {
+    _hold(true);
+    final s = KScheme.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: s.panel,
+        title: Text('Delete this update?', style: TextStyle(color: s.text)),
+        content: Text(
+            'It disappears for everyone straight away, including anyone who has not seen it yet.',
+            style: TextStyle(color: s.muted)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('Cancel', style: TextStyle(color: s.muted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete',
+                style: TextStyle(
+                    color: KColors.danger, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) {
+      _hold(false);
+      return;
+    }
+
+    final me = ref.read(activePersonaProvider).valueOrNull;
+    final sid = _sid;
+    if (me == null || sid == null) return;
+    try {
+      await ref.read(apiProvider).statusDelete(
+            kalId: me.kalId,
+            token: me.token,
+            statusId: sid,
+          );
+      ref.read(statusRefreshProvider.notifier).state++;
+      if (mounted) {
+        Navigator.of(context).maybePop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Update deleted')),
+        );
+      }
+    } catch (_) {
+      _hold(false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not delete that')),
+        );
+      }
+    }
+  }
+
   Future<void> _showViewers() async {
     _hold(true);
     final me = ref.read(activePersonaProvider).valueOrNull;
@@ -549,6 +606,7 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
                         views: item.views,
                         reactions: _reactionCount,
                         onViewers: _showViewers,
+                        onDelete: _deleteStatus,
                       )
                     : Row(
                         children: [
@@ -652,43 +710,65 @@ class _OwnerBar extends StatelessWidget {
   final int views;
   final int reactions;
   final VoidCallback onViewers;
+  final VoidCallback onDelete;
   const _OwnerBar({
     required this.views,
     required this.reactions,
     required this.onViewers,
+    required this.onDelete,
   });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onViewers,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.16),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white.withOpacity(0.28)),
+    return Row(
+      children: [
+        Expanded(
+          child: GestureDetector(
+            onTap: onViewers,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.16),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: Colors.white.withOpacity(0.28)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.visibility_outlined,
+                      color: Colors.white, size: 19),
+                  const SizedBox(width: 8),
+                  Text('$views viewers',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w600)),
+                  if (reactions > 0) ...[
+                    const SizedBox(width: 16),
+                    Text('❤ $reactions',
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 14)),
+                  ],
+                ],
+              ),
+            ),
+          ),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.visibility_outlined,
-                color: Colors.white, size: 19),
-            const SizedBox(width: 8),
-            Text('$views viewers',
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14.5,
-                    fontWeight: FontWeight.w600)),
-            if (reactions > 0) ...[
-              const SizedBox(width: 16),
-              Text('❤ $reactions',
-                  style:
-                      const TextStyle(color: Colors.white, fontSize: 14)),
-            ],
-          ],
+        const SizedBox(width: 10),
+        GestureDetector(
+          onTap: onDelete,
+          child: Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: KColors.danger.withOpacity(0.9),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: const Icon(Icons.delete_outline_rounded,
+                color: Colors.white, size: 23),
+          ),
         ),
-      ),
+      ],
     );
   }
 }
