@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../app/providers.dart';
 import '../../util/ids.dart';
@@ -34,6 +35,25 @@ class StatusItem {
   /// Large media is stored on the server; the payload is then 'file:<url>'.
   bool get isRemote => payload.startsWith('file:');
   String? get remoteUrl => isRemote ? payload.substring(5) : null;
+
+  /// A photo with a track behind it is packed as 'mix:<base64 json>'.
+  bool get hasMusic => payload.startsWith('mix:');
+
+  Map<String, String>? get mixed {
+    if (!hasMusic) return null;
+    try {
+      final j = jsonDecode(utf8.decode(base64Decode(payload.substring(4))));
+      return {
+        'img': '${(j as Map)['img']}',
+        'audio': '${j['audio']}',
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The image to draw, whichever form the status took.
+  String get imagePayload => hasMusic ? (mixed?['img'] ?? '') : payload;
 
   /// Small badge shown on the card so you know the type before opening.
   String? get kindBadge => switch (type) {

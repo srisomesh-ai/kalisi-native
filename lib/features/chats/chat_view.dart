@@ -8,6 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:open_filex/open_filex.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:record/record.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import '../../theme/colors.dart';
@@ -138,6 +140,55 @@ class _ChatViewState extends ConsumerState<ChatView> {
     }
   }
 
+  /// Pick several photos, add a caption, then send.
+  Future<void> _sendPhotos() async {
+    try {
+      final picked = await ImagePicker().pickMultiImage(
+        maxWidth: 1600,
+        maxHeight: 1600,
+        imageQuality: 78,
+      );
+      if (picked.isEmpty || !mounted) return;
+
+      final caption = await Navigator.of(context).push<String?>(
+        MaterialPageRoute(
+          builder: (_) => _PhotoPreview(
+            files: picked,
+            to: widget.contact.name,
+          ),
+        ),
+      );
+      if (caption == null || !mounted) return;   // cancelled
+
+      setState(() => _sending = true);
+      final me = ref.read(activePersonaProvider).valueOrNull;
+      if (me == null) return;
+
+      for (var i = 0; i < picked.length; i++) {
+        final bytes = await picked[i].readAsBytes();
+        await ref.read(messageRepoProvider).sendMedia(
+              me: me,
+              contact: widget.contact,
+              kind: 'img',
+              dataUrl: 'data:image/jpeg;base64,${base64Encode(bytes)}',
+              localPath: picked[i].path,
+              // the caption goes on the first photo only, like WhatsApp
+              caption: i == 0 && caption.isNotEmpty ? caption : null,
+              burn: _burn,
+            );
+      }
+      _scrollToBottom();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not send those photos')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
   Future<void> _sendPhoto() async {
     if (_sending) return;
     try {
@@ -200,6 +251,48 @@ class _ChatViewState extends ConsumerState<ChatView> {
           );
       _scrollToBottom();
     } catch (_) {
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  /// Attach a document (PDF, doc, anything).
+  Future<void> _sendDocument() async {
+    try {
+      final res = await FilePicker.platform.pickFiles(type: FileType.any);
+      final f = res?.files.single;
+      final path = f?.path;
+      if (path == null || !mounted) return;
+
+      final size = f!.size;
+      if (size > 12000000) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Files up to 12 MB can be sent')),
+        );
+        return;
+      }
+      setState(() => _sending = true);
+      final bytes = await File(path).readAsBytes();
+      final me = ref.read(activePersonaProvider).valueOrNull;
+      if (me == null) return;
+      await ref.read(messageRepoProvider).sendMedia(
+            me: me,
+            contact: widget.contact,
+            kind: 'file',
+            dataUrl:
+                'data:application/octet-stream;base64,${base64Encode(bytes)}',
+            localPath: path,
+            fileName: f.name,
+            fileSize: size,
+            burn: _burn,
+          );
+      _scrollToBottom();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not send that file')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -561,8 +654,9 @@ class _ChatViewState extends ConsumerState<ChatView> {
                 sending: _sending,
                 recording: false,
                 onSend: _send,
-                onPhoto: _sendPhoto,
+                onPhoto: _sendPhotos,
                 onCamera: _pickCamera,
+                onDocument: _sendDocument,
                 onVoice: _toggleRecording,
                 burn: _burn,
                 onBurnChanged: (v) => setState(() => _burn = v),
@@ -674,6 +768,13 @@ class _BubbleState extends ConsumerState<_Bubble> {
                                 size: 12, color: KColors.amber),
                             const SizedBox(width: 3),
                           ],
+                          if (message.editedAt != null) ...[
+                            Text('edited ',
+                                style: TextStyle(
+                                    color: s.faint,
+                                    fontSize: 10.5,
+                                    fontStyle: FontStyle.italic)),
+                          ],
                           Text(fmtTime(message.ts),
                               style: TextStyle(color: s.faint, fontSize: 10.5)),
                           if (mine) ...[
@@ -766,6 +867,9 @@ class _BubbleState extends ConsumerState<_Bubble> {
           );
         }
         break;
+      case 'edit':
+        await _editMessage(context, ref);
+        break;
       case 'forward':
         await ForwardSheet.open(context, ref, message);
         break;
@@ -797,6 +901,48 @@ class _BubbleState extends ConsumerState<_Bubble> {
     return noEmoji.isEmpty;
   }
 
+  /// Rewrite one of my own messages.
+  Future<void> _editMessage(BuildContext context, WidgetRef ref) async {
+    final s = KScheme.of(context);
+    final c = TextEditingController(text: message.body ?? '');
+    final text = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: s.panel,
+        title: Text('Edit message', style: TextStyle(color: s.text)),
+        content: TextField(
+          controller: c,
+          autofocus: true,
+          maxLines: 4,
+          style: TextStyle(color: s.text),
+          decoration: InputDecoration(
+            filled: true,
+            fillColor: s.panel2,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none,
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('Cancel', style: TextStyle(color: s.muted)),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, c.text.trim()),
+            style: FilledButton.styleFrom(backgroundColor: KColors.teal),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (text == null || text.isEmpty || text == message.body) return;
+    final me = ref.read(activePersonaProvider).valueOrNull;
+    if (me == null) return;
+    await ref.read(messageRepoProvider).editText(me, message, text);
+  }
+
   Widget _content(BuildContext context, KScheme s) {
     // A disappearing message stays hidden until it's tapped, then burns.
     if (message.burn && !message.burned && message.fromMe == 'them') {
@@ -819,11 +965,25 @@ class _BubbleState extends ConsumerState<_Bubble> {
     }
     switch (message.kind) {
       case 'img':
-        return _ImageContent(dataUrl: message.body);
+        if ((message.caption ?? '').isEmpty) {
+          return _ImageContent(dataUrl: message.body);
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _ImageContent(dataUrl: message.body),
+            const SizedBox(height: 6),
+            Text(Mask.sensitive(message.caption!),
+                style: TextStyle(color: s.text, fontSize: 15.5, height: 1.35)),
+          ],
+        );
       case 'voice':
         return _VoiceContent(message: message);
       case 'call':
         return _CallEntry(message: message);
+      case 'file':
+        return _FileContent(message: message);
       default:
         final body = message.body ?? '';
         // A message that's only emoji shows bigger, like WhatsApp.
@@ -1087,6 +1247,7 @@ class _Composer extends StatefulWidget {
   final VoidCallback onSend;
   final VoidCallback onPhoto;
   final VoidCallback onCamera;
+  final VoidCallback onDocument;
   final VoidCallback onVoice;
   final bool burn;
   final void Function(bool) onBurnChanged;
@@ -1097,6 +1258,7 @@ class _Composer extends StatefulWidget {
     required this.onSend,
     required this.onPhoto,
     required this.onCamera,
+    required this.onDocument,
     required this.onVoice,
     required this.burn,
     required this.onBurnChanged,
@@ -1144,10 +1306,23 @@ class _ComposerState extends State<_Composer> {
             ListTile(
               leading: const Icon(Icons.photo_library_rounded,
                   color: KColors.teal),
-              title: Text('Photo library', style: TextStyle(color: s.text)),
+              title: Text('Photos', style: TextStyle(color: s.text)),
+              subtitle: Text('Pick several, add a caption',
+                  style: TextStyle(color: s.muted, fontSize: 12.5)),
               onTap: () {
                 Navigator.pop(ctx);
                 widget.onPhoto();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.insert_drive_file_rounded,
+                  color: KColors.teal),
+              title: Text('Document', style: TextStyle(color: s.text)),
+              subtitle: Text('PDF, Word, anything up to 12 MB',
+                  style: TextStyle(color: s.muted, fontSize: 12.5)),
+              onTap: () {
+                Navigator.pop(ctx);
+                widget.onDocument();
               },
             ),
             ListTile(
@@ -2045,6 +2220,228 @@ class _ChatSearch extends SearchDelegate<void> {
           },
         );
       },
+    );
+  }
+}
+
+/// A document in the chat — tap to open it.
+class _FileContent extends StatefulWidget {
+  final Message message;
+  const _FileContent({required this.message});
+  @override
+  State<_FileContent> createState() => _FileContentState();
+}
+
+class _FileContentState extends State<_FileContent> {
+  bool _busy = false;
+
+  String get _size {
+    final b = widget.message.fileSize ?? 0;
+    if (b <= 0) return '';
+    if (b < 1024) return '$b B';
+    if (b < 1048576) return '${(b / 1024).toStringAsFixed(0)} KB';
+    return '${(b / 1048576).toStringAsFixed(1)} MB';
+  }
+
+  IconData get _icon {
+    final n = (widget.message.fileName ?? '').toLowerCase();
+    if (n.endsWith('.pdf')) return Icons.picture_as_pdf_rounded;
+    if (n.endsWith('.doc') || n.endsWith('.docx')) return Icons.description_rounded;
+    if (n.endsWith('.xls') || n.endsWith('.xlsx')) return Icons.table_chart_rounded;
+    if (n.endsWith('.zip') || n.endsWith('.rar')) return Icons.folder_zip_rounded;
+    return Icons.insert_drive_file_rounded;
+  }
+
+  Future<void> _open() async {
+    setState(() => _busy = true);
+    try {
+      var path = widget.message.mediaPath;
+      if (path == null || !File(path).existsSync()) {
+        // received file — write it out of the message first
+        final data = widget.message.body;
+        if (data == null) return;
+        final i = data.indexOf(',');
+        final bytes = base64Decode(i >= 0 ? data.substring(i + 1) : data);
+        final dir = await getApplicationDocumentsDirectory();
+        final files = Directory('${dir.path}/files');
+        if (!files.existsSync()) files.createSync(recursive: true);
+        path = '${files.path}/${widget.message.fileName ?? widget.message.id}';
+        await File(path).writeAsBytes(bytes, flush: true);
+      }
+      await OpenFilex.open(path);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No app can open this file')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = KScheme.of(context);
+    return GestureDetector(
+      onTap: _busy ? null : _open,
+      child: SizedBox(
+        width: 220,
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: KColors.tealSoft,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: _busy
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: KColors.teal),
+                    )
+                  : Icon(_icon, color: KColors.teal, size: 22),
+            ),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(widget.message.fileName ?? 'Document',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          color: s.text,
+                          fontSize: 14.5,
+                          fontWeight: FontWeight.w600)),
+                  if (_size.isNotEmpty)
+                    Text(_size,
+                        style: TextStyle(color: s.muted, fontSize: 12)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Review the chosen photos and add a caption before sending.
+class _PhotoPreview extends StatefulWidget {
+  final List<XFile> files;
+  final String to;
+  const _PhotoPreview({required this.files, required this.to});
+  @override
+  State<_PhotoPreview> createState() => _PhotoPreviewState();
+}
+
+class _PhotoPreviewState extends State<_PhotoPreview> {
+  final _caption = TextEditingController();
+  int _i = 0;
+
+  @override
+  void dispose() {
+    _caption.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final many = widget.files.length > 1;
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: Text(many
+            ? '${widget.files.length} photos'
+            : 'Send to ${widget.to}'),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: PageView.builder(
+              itemCount: widget.files.length,
+              onPageChanged: (i) => setState(() => _i = i),
+              itemBuilder: (_, i) => Center(
+                child: Image.file(File(widget.files[i].path),
+                    fit: BoxFit.contain),
+              ),
+            ),
+          ),
+          if (many)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(
+                  widget.files.length,
+                  (i) => Container(
+                    width: 7,
+                    height: 7,
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: i == _i ? Colors.white : Colors.white38,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.14),
+                        borderRadius: BorderRadius.circular(26),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      child: TextField(
+                        controller: _caption,
+                        style: const TextStyle(
+                            color: Colors.white, fontSize: 15.5),
+                        maxLines: 3,
+                        minLines: 1,
+                        decoration: const InputDecoration(
+                          hintText: 'Add a caption…',
+                          hintStyle: TextStyle(color: Colors.white60),
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(vertical: 13),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 9),
+                  GestureDetector(
+                    onTap: () =>
+                        Navigator.of(context).pop(_caption.text.trim()),
+                    child: Container(
+                      width: 50,
+                      height: 50,
+                      decoration: const BoxDecoration(
+                        color: KColors.teal,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.send_rounded,
+                          color: Colors.white, size: 22),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

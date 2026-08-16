@@ -397,6 +397,12 @@ class _Actions extends StatelessWidget {
                   label: 'Copy',
                   onTap: () => Navigator.of(context).pop('copy'),
                 ),
+              if (mine && message.kind == 'text')
+                _Item(
+                  icon: Icons.edit_rounded,
+                  label: 'Edit',
+                  onTap: () => Navigator.of(context).pop('edit'),
+                ),
               _Item(
                 icon: Icons.forward_rounded,
                 label: 'Forward',

@@ -1,8 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:video_compress/video_compress.dart';
 import 'package:record/record.dart';
 import 'package:audioplayers/audioplayers.dart';
@@ -167,8 +169,24 @@ class StatusComposer {
         }
         return;
       }
+
+      // Offer to put a track behind it, like a short.
+      final music = await Navigator.of(context).push<String?>(
+        MaterialPageRoute(
+          builder: (_) => PhotoStatusScreen(imageBytes: bytes),
+        ),
+      );
+      if (music == null || !context.mounted) return;   // cancelled
+
       final dataUrl = 'data:image/jpeg;base64,${base64Encode(bytes)}';
-      await _post(context, ref, type: 'photo', payload: dataUrl);
+      if (music.isEmpty) {
+        await _post(context, ref, type: 'photo', payload: dataUrl);
+      } else {
+        // photo + track travel together as one payload
+        final combined = jsonEncode({'img': dataUrl, 'audio': music});
+        await _post(context, ref,
+            type: 'photo', payload: 'mix:${base64Encode(utf8.encode(combined))}');
+      }
     } catch (_) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -599,6 +617,193 @@ class _Working extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Preview a photo status and optionally put a track behind it.
+///
+/// Returns '' for no music, a base64 audio data URL if a track was chosen,
+/// or null if cancelled.
+class PhotoStatusScreen extends StatefulWidget {
+  final Uint8List imageBytes;
+  const PhotoStatusScreen({super.key, required this.imageBytes});
+
+  @override
+  State<PhotoStatusScreen> createState() => _PhotoStatusScreenState();
+}
+
+class _PhotoStatusScreenState extends State<PhotoStatusScreen> {
+  final _player = AudioPlayer();
+  String? _trackName;
+  String? _trackData;
+  bool _playing = false;
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickMusic() async {
+    setState(() => _busy = true);
+    try {
+      final res = await FilePicker.platform.pickFiles(type: FileType.audio);
+      final path = res?.files.single.path;
+      final name = res?.files.single.name;
+      if (path == null) return;
+
+      final bytes = await File(path).readAsBytes();
+      // a status carries its audio, so keep it short
+      if (bytes.length > 1200000) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Track too large — try a shorter clip')),
+          );
+        }
+        return;
+      }
+      setState(() {
+        _trackName = name;
+        _trackData = 'data:audio/mpeg;base64,${base64Encode(bytes)}';
+      });
+      await _player.play(DeviceFileSource(path));
+      setState(() => _playing = true);
+      _player.onPlayerComplete.listen((_) {
+        if (mounted) setState(() => _playing = false);
+      });
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not use that track')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _toggle() async {
+    if (_playing) {
+      await _player.pause();
+      setState(() => _playing = false);
+    } else {
+      await _player.resume();
+      setState(() => _playing = true);
+    }
+  }
+
+  void _clear() {
+    _player.stop();
+    setState(() {
+      _trackName = null;
+      _trackData = null;
+      _playing = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        title: const Text('Your update'),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: Center(
+              child: Image.memory(widget.imageBytes, fit: BoxFit.contain),
+            ),
+          ),
+          // music strip
+          Container(
+            margin: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                    _trackName == null
+                        ? Icons.music_note_rounded
+                        : (_playing
+                            ? Icons.pause_circle_filled_rounded
+                            : Icons.play_circle_fill_rounded),
+                    color: KColors.amber,
+                    size: 26),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _busy
+                      ? const Text('Loading…',
+                          style: TextStyle(color: Colors.white70))
+                      : Text(
+                          _trackName ?? 'Add music from your phone',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              color: _trackName == null
+                                  ? Colors.white70
+                                  : Colors.white,
+                              fontSize: 14.5,
+                              fontWeight: _trackName == null
+                                  ? FontWeight.w400
+                                  : FontWeight.w600),
+                        ),
+                ),
+                if (_trackName == null)
+                  TextButton(
+                    onPressed: _busy ? null : _pickMusic,
+                    child: const Text('Choose',
+                        style: TextStyle(color: KColors.amber)),
+                  )
+                else ...[
+                  IconButton(
+                    onPressed: _toggle,
+                    icon: Icon(
+                        _playing
+                            ? Icons.pause_rounded
+                            : Icons.play_arrow_rounded,
+                        color: Colors.white),
+                  ),
+                  IconButton(
+                    onPressed: _clear,
+                    icon: const Icon(Icons.close_rounded,
+                        color: Colors.white70),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () =>
+                      Navigator.of(context).pop(_trackData ?? ''),
+                  icon: const Icon(Icons.send_rounded, size: 19),
+                  label: const Text('Share to status',
+                      style: TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 16)),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: KColors.teal,
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

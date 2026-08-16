@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:drift/drift.dart';
+import '../../util/ids.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -75,6 +76,12 @@ class Messages extends Table {
   TextColumn get pendingEnvelope => text().nullable()();
   IntColumn get sendAttempts => integer().withDefault(const Constant(0))();
   BoolColumn get starred => boolean().withDefault(const Constant(false))();
+  /// Caption on a photo, and document details.
+  TextColumn get caption => text().nullable()();
+  TextColumn get fileName => text().nullable()();
+  IntColumn get fileSize => integer().nullable()();
+  /// When a message was last edited (null if never).
+  IntColumn get editedAt => integer().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -88,7 +95,7 @@ class KalisiDb extends _$KalisiDb {
   KalisiDb.forTesting(super.executor);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -121,6 +128,12 @@ class KalisiDb extends _$KalisiDb {
             await m.addColumn(contacts, contacts.pinned);
             await m.addColumn(contacts, contacts.archived);
             await m.addColumn(messages, messages.starred);
+          }
+          if (from < 8) {
+            await m.addColumn(messages, messages.caption);
+            await m.addColumn(messages, messages.fileName);
+            await m.addColumn(messages, messages.fileSize);
+            await m.addColumn(messages, messages.editedAt);
           }
         },
       );
@@ -279,6 +292,12 @@ class KalisiDb extends _$KalisiDb {
   Future<void> setArchived(String id, bool v) =>
       (update(contacts)..where((t) => t.id.equals(id)))
           .write(ContactsCompanion(archived: Value(v)));
+
+  /// Change the text of a message already sent, and mark it edited.
+  Future<void> editMessage(String id, String body) =>
+      (update(messages)..where((t) => t.id.equals(id))).write(
+        MessagesCompanion(body: Value(body), editedAt: Value(nowMs())),
+      );
 
   Future<void> setStarred(String id, bool v) =>
       (update(messages)..where((t) => t.id.equals(id)))

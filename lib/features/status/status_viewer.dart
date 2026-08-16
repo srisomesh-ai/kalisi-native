@@ -67,6 +67,7 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
         ..reset()
         ..forward();
       if (item.isVoice) _playVoice();
+      if (item.hasMusic) _playMusic();
     }
   }
 
@@ -119,6 +120,7 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
     if (_i < widget.items.length - 1) {
       setState(() => _i++);
       _player.stop();
+      _progress.duration = _perStatus;
       _open();
     } else {
       Navigator.of(context).maybePop();
@@ -129,6 +131,7 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
     if (_i > 0) {
       setState(() => _i--);
       _player.stop();
+      _progress.duration = _perStatus;
       _open();
     }
   }
@@ -138,9 +141,11 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
     if (down) {
       _progress.stop();
       _video?.pause();
+      _player.pause();
     } else {
       _progress.forward();
       _video?.play();
+      if (item.hasMusic || item.isVoice) _player.resume();
     }
   }
 
@@ -173,6 +178,25 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
         _myReaction =
             (mineR == null || '$mineR'.isEmpty) ? null : '$mineR';
       });
+    } catch (_) {}
+  }
+
+  /// The track behind a photo status.
+  Future<void> _playMusic() async {
+    try {
+      final audio = item.mixed?['audio'];
+      if (audio == null || audio.isEmpty) return;
+      final bytes = Avatar.decode(audio);
+      if (bytes == null) return;
+      final p = '${Directory.systemTemp.path}/kmusic_${item.id}.mp3';
+      final f = File(p);
+      if (!f.existsSync()) await f.writeAsBytes(bytes, flush: true);
+      await _player.play(DeviceFileSource(p));
+      // a photo with music lingers longer than a plain one
+      _progress.duration = const Duration(seconds: 12);
+      _progress
+        ..reset()
+        ..forward();
     } catch (_) {}
   }
 
@@ -494,7 +518,7 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
 
   @override
   Widget build(BuildContext context) {
-    final bytes = item.isPhoto ? Avatar.decode(item.payload) : null;
+    final bytes = item.isPhoto ? Avatar.decode(item.imagePayload) : null;
     final pair = KColors.avatarPairFor(item.kalId);
 
     return Scaffold(
@@ -621,6 +645,34 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
               ),
             ),
           ),
+
+          // music badge
+          if (item.hasMusic)
+            Positioned(
+              left: 14,
+              bottom: 100,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.45),
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.music_note_rounded,
+                        color: KColors.amber, size: 16),
+                    SizedBox(width: 6),
+                    Text('music',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            ),
 
           // header
           Positioned(

@@ -268,7 +268,7 @@ class _Thumb extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bytes =
-        (item.isPhoto && !item.isRemote) ? Avatar.decode(item.payload) : null;
+        (item.isPhoto && !item.isRemote) ? Avatar.decode(item.imagePayload) : null;
     final pair = KColors.avatarPairFor(item.kalId);
     return Container(
       width: 56,
@@ -401,7 +401,7 @@ class _PersonCard extends StatelessWidget {
     final latest = items.last;
     final unseen = items.any((s) => !s.seen);
     final bytes = (latest.isPhoto && !latest.isRemote)
-        ? Avatar.decode(latest.payload)
+        ? Avatar.decode(latest.imagePayload)
         : null;
     final pair = KColors.avatarPairFor(latest.kalId);
 

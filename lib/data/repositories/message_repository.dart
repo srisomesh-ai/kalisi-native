@@ -172,9 +172,12 @@ class MessageRepository {
   Future<void> sendMedia({
     required Persona me,
     required Contact contact,
-    required String kind, // 'img' | 'voice'
+    required String kind, // 'img' | 'voice' | 'file'
     required String dataUrl,
     String? localPath,
+    String? caption,
+    String? fileName,
+    int? fileSize,
     int durationSec = 0,
     List<int>? waveform,
     bool burn = false,
@@ -192,6 +195,9 @@ class MessageRepository {
       // keep the payload for both photo and voice so it can be replayed
       body: Value(dataUrl),
       mediaPath: Value(localPath),
+      caption: Value(caption),
+      fileName: Value(fileName),
+      fileSize: Value(fileSize),
       ts: ts,
       status: const Value('sending'),
       burn: Value(burn),
@@ -208,8 +214,12 @@ class MessageRepository {
       'text': null,
       'img': kind == 'img' ? dataUrl : null,
       'audio': kind == 'voice' ? dataUrl : null,
+      'file': kind == 'file' ? dataUrl : null,
       'wave': waveform,
       'dur': durationSec,
+      'caption': caption,
+      'fileName': fileName,
+      'fileSize': fileSize,
       'burn': burn,
       'replyTo': null,
       'cid': cid,
@@ -245,6 +255,32 @@ class MessageRepository {
       'kind': 'react',
       'id': message.id,
       'emoji': emoji,
+      'cid': newUuid(),
+      'ts': nowMs(),
+    };
+    try {
+      final enc = await KalisiCrypto.encryptObject(
+          obj, me.privateJwk, contact!.publicJwk!);
+      await _api.send(
+        kalId: me.kalId,
+        token: me.token,
+        to: contact.kalId,
+        clientId: obj['cid'] as String,
+        iv: enc.iv,
+        blob: enc.blob,
+      );
+    } catch (_) {}
+  }
+
+  /// Change a message I already sent, and tell the other side.
+  Future<void> editText(Persona me, Message message, String text) async {
+    await _db.editMessage(message.id, text);
+    final contact = await _db.contactById(message.contactId);
+    if (contact?.publicJwk == null) return;
+    final obj = <String, dynamic>{
+      'kind': 'edit',
+      'id': message.id,
+      'text': text,
       'cid': newUuid(),
       'ts': nowMs(),
     };
@@ -643,6 +679,14 @@ class MessageRepository {
           }
           continue;
         }
+        if (kind == 'edit') {
+          final eid = obj['id']?.toString();
+          final txt = obj['text']?.toString();
+          if (eid != null && txt != null) {
+            await _db.editMessage(eid, txt);
+          }
+          continue;
+        }
         if (kind == 'delete') {
           final did = obj['id']?.toString();
           if (did != null) await _db.deleteMessageById(did);
@@ -710,7 +754,8 @@ class MessageRepository {
           continue;
         }
         // Any non-content kind we don't recognise: skip (never show empty bubbles).
-        if (kind != 'text' && kind != 'img' && kind != 'voice') {
+        if (kind != 'text' && kind != 'img' && kind != 'voice' &&
+            kind != 'file') {
           continue;
         }
 
@@ -718,8 +763,8 @@ class MessageRepository {
         String? body;
         if (kind == 'img') {
           body = obj['img']?.toString();
-        } else if (kind == 'voice') {
-          body = obj['audio']?.toString();
+        } else if (kind == 'voice' || kind == 'file') {
+          body = (obj['audio'] ?? obj['file'])?.toString();
         } else {
           body = obj['text']?.toString();
         }
@@ -735,6 +780,9 @@ class MessageRepository {
           fromMe: 'them',
           kind: Value(kind),
           body: Value(body),
+          caption: Value(obj['caption']?.toString()),
+          fileName: Value(obj['fileName']?.toString()),
+          fileSize: Value((obj['fileSize'] as num?)?.toInt()),
           replyToId: Value(rep is Map ? rep['id']?.toString() : null),
           replyToText: Value(rep is Map ? rep['text']?.toString() : null),
           replyToWho: Value(rep is Map ? rep['who']?.toString() : null),
