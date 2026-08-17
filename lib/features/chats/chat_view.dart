@@ -14,6 +14,7 @@ import 'package:record/record.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import '../../theme/colors.dart';
 import '../../app/providers.dart';
+import '../../data/push/push_service.dart';
 import '../../data/db/database.dart';
 import '../../util/ids.dart';
 import '../../widgets/avatar.dart';
@@ -62,6 +63,8 @@ class _ChatViewState extends ConsumerState<ChatView> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(openChatIdProvider.notifier).state = widget.contact.id;
       ref.read(openChatKalIdProvider.notifier).state = widget.contact.kalId;
+      // the messages are being read now, so drop the notification for them
+      PushService.clearFor(widget.contact.id);
     });
     _input.addListener(_onTyping);
   }

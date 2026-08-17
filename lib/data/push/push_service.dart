@@ -30,6 +30,44 @@ class PushService {
   /// Set by the app so this class stays free of app state.
   static bool Function(Map<String, dynamic> data)? suppress;
 
+  /// Called with the sender's KAL-id when a notification is tapped, so the
+  /// app can open that conversation.
+  static void Function(String fromKalId)? onOpenChat;
+
+  /// A tap that arrived before the app was ready to handle it.
+  static String? _pendingOpen;
+
+  /// Handle a tap that came in during startup.
+  static void drainPendingOpen() {
+    final p = _pendingOpen;
+    if (p != null && onOpenChat != null) {
+      _pendingOpen = null;
+      onOpenChat!(p);
+    }
+  }
+
+  static void _handleTap(String? payload) {
+    if (payload == null || payload.isEmpty) return;
+    if (onOpenChat != null) {
+      onOpenChat!(payload);
+    } else {
+      _pendingOpen = payload;   // app not ready yet
+    }
+  }
+
+  /// Clear the notifications for one chat — used once its messages are read.
+  static Future<void> clearFor(String contactKey) async {
+    try {
+      await _local.cancel(contactKey.hashCode);
+    } catch (_) {}
+  }
+
+  static Future<void> clearAll() async {
+    try {
+      await _local.cancelAll();
+    } catch (_) {}
+  }
+
   /// Initialize Firebase + local notifications. Safe to call once at startup.
   static Future<void> init() async {
     if (_inited) return;
@@ -43,7 +81,21 @@ class PushService {
       const androidInit =
           AndroidInitializationSettings('@mipmap/ic_launcher');
       const initSettings = InitializationSettings(android: androidInit);
-      await _local.initialize(initSettings);
+      await _local.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: (r) => _handleTap(r.payload),
+      );
+
+      // tapped while the app was in the background
+      FirebaseMessaging.onMessageOpenedApp.listen((msg) {
+        _handleTap(msg.data['from']?.toString());
+      });
+
+      // tapped while the app was closed entirely
+      final initial = await FirebaseMessaging.instance.getInitialMessage();
+      if (initial != null) {
+        _pendingOpen = initial.data['from']?.toString();
+      }
 
       final channel = AndroidNotificationChannel(
         'kalisi_messages_v2',
@@ -74,6 +126,7 @@ class PushService {
             n.hashCode,
             n.title ?? 'Kalisi',
             n.body ?? 'New message',
+            payload: msg.data['from']?.toString(),
             const NotificationDetails(
               android: AndroidNotificationDetails(
                 'kalisi_messages_v2',
@@ -96,6 +149,7 @@ class PushService {
     required String title,
     required String body,
     int? id,
+    String? fromKalId,
   }) async {
     try {
       await _local.show(
@@ -115,6 +169,7 @@ class PushService {
             ticker: 'New message',
           ),
         ),
+        payload: fromKalId,
       );
     } catch (_) {
       // notifications unavailable — at least buzz

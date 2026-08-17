@@ -8,6 +8,8 @@ import '../../widgets/avatar.dart';
 import 'chat_view.dart';
 import '../contact/contact_details.dart';
 import '../groups/group_info_screen.dart';
+import '../status/status_viewer.dart';
+import '../status/status_model.dart';
 import '../groups/new_group_screen.dart';
 import '../../util/mask.dart';
 
@@ -313,6 +315,10 @@ class _ChatRow extends ConsumerWidget {
       }
     });
 
+    final owners = ref.watch(statusOwnersProvider);
+    final hasStatus = owners.all.contains(contact.kalId);
+    final unseenStatus = owners.unseen.contains(contact.kalId);
+
     return InkWell(
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => ChatView(contact: contact)),
@@ -322,18 +328,66 @@ class _ChatRow extends ConsumerWidget {
         child: Row(
           children: [
             GestureDetector(
-              onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => contact.isGroup
-                    ? GroupInfoScreen(group: contact)
-                    : ContactDetailsScreen(contact: contact),
-              )),
-              child: Avatar(
-                seed: contact.kalId,
-                label: contact.name.isNotEmpty
-                    ? contact.name[0].toUpperCase()
-                    : '?',
-                size: 55,
-                photo: contact.avatar,
+              // Tapping the photo opens their status when they have one,
+              // otherwise their details.
+              onTap: () {
+                if (hasStatus && !contact.isGroup) {
+                  _openStatus(context, ref, contact.kalId);
+                } else {
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => contact.isGroup
+                        ? GroupInfoScreen(group: contact)
+                        : ContactDetailsScreen(contact: contact),
+                  ));
+                }
+              },
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Avatar(
+                    seed: contact.kalId,
+                    label: contact.name.isNotEmpty
+                        ? contact.name[0].toUpperCase()
+                        : '?',
+                    size: 55,
+                    photo: contact.avatar,
+                  ),
+                  // A clear badge rather than a ring — amber when unseen,
+                  // outlined once viewed.
+                  if (hasStatus)
+                    Positioned(
+                      right: -2,
+                      bottom: -2,
+                      child: Container(
+                        padding: const EdgeInsets.all(2.5),
+                        decoration: BoxDecoration(
+                          color: s.bg,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Container(
+                          width: 19,
+                          height: 19,
+                          decoration: BoxDecoration(
+                            color: unseenStatus
+                                ? KColors.amber
+                                : Colors.transparent,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: unseenStatus
+                                  ? KColors.amber
+                                  : s.faint.withOpacity(0.6),
+                              width: 1.6,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.play_arrow_rounded,
+                            size: 12,
+                            color: unseenStatus ? Colors.white : s.faint,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
             const SizedBox(width: 14),
@@ -454,6 +508,19 @@ class _Empty extends StatelessWidget {
   }
 }
 
+
+/// Open one person's status run from the chat list.
+void _openStatus(BuildContext context, WidgetRef ref, String kalId) {
+  final feed = ref.read(statusFeedProvider).valueOrNull;
+  if (feed == null) return;
+  final items = feed.others.where((s) => s.kalId == kalId).toList()
+    ..sort((a, b) => a.ts.compareTo(b.ts));
+  if (items.isEmpty) return;
+  Navigator.of(context).push(MaterialPageRoute(
+    fullscreenDialog: true,
+    builder: (_) => StatusViewer(items: items),
+  ));
+}
 
 /// Long-press a chat: mute, pin, archive, delete.
 void _chatActions(BuildContext context, WidgetRef ref, Contact c) {

@@ -4,6 +4,7 @@ import '../../theme/colors.dart';
 import '../../app/providers.dart';
 import '../../data/push/push_service.dart';
 import '../chats/chats_screen.dart';
+import '../chats/chat_view.dart';
 import '../connect/connect_screen.dart';
 import '../status/status_screen.dart';
 import '../settings/settings_screen.dart';
@@ -30,6 +31,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (me != null) {
         PushService.registerToken(ref.read(apiProvider), me.kalId, me.token);
       }
+
+      // Tapping a notification opens that conversation.
+      PushService.onOpenChat = (fromKalId) async {
+        final me = ref.read(activePersonaProvider).valueOrNull;
+        if (me == null) return;
+        final c = await ref.read(dbProvider).contactByKalId(me.id, fromKalId);
+        if (c == null || !mounted) return;
+        setState(() => _tab = 0);
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => ChatView(contact: c)),
+        );
+      };
+      // handle a tap that arrived while the app was still starting
+      PushService.drainPendingOpen();
 
       // While the app is open, don't raise a banner for the chat already on
       // screen, or for a muted chat.

@@ -171,6 +171,7 @@ class Poller {
         title: who,
         body: body.length > 80 ? '${body.substring(0, 80)}…' : body,
         id: latest.contactId.hashCode,
+        fromKalId: contact?.kalId,
       );
     } catch (_) {}
   }
