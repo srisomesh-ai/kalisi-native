@@ -12,6 +12,7 @@ import 'package:audioplayers/audioplayers.dart';
 import '../../theme/colors.dart';
 import '../../app/providers.dart';
 import '../../util/ids.dart';
+import '../../util/feedback.dart';
 import 'status_model.dart';
 
 /// Sheet offering the status types, then the right composer for each.
@@ -314,6 +315,7 @@ class StatusComposer {
             payload: payload,
           );
       ref.read(statusRefreshProvider.notifier).state++;
+      Feedback.statusPosted();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Added to your status')),
@@ -480,6 +482,7 @@ class _VoiceStatusScreenState extends ConsumerState<VoiceStatusScreen> {
             payload: 'data:audio/mp4;base64,${base64Encode(bytes)}',
           );
       ref.read(statusRefreshProvider.notifier).state++;
+      Feedback.statusPosted();
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(

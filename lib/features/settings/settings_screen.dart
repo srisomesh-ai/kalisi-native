@@ -8,6 +8,7 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_cropper/image_cropper.dart';
 import '../../theme/colors.dart';
 import '../../app/providers.dart';
+import '../../util/feedback.dart';
 import '../../data/crypto/kalisi_crypto.dart';
 import '../../widgets/avatar.dart';
 import 'backup_screen.dart';
@@ -89,6 +90,28 @@ class SettingsScreen extends ConsumerWidget {
               onTap: () => Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => const PrivacyDetailsScreen(),
               )),
+            ),
+          ]),
+
+          _Group(title: 'SOUNDS', children: [
+            SwitchListTile(
+              value: ref.watch(soundsProvider),
+              activeColor: KColors.teal,
+              secondary: Icon(
+                  ref.watch(soundsProvider)
+                      ? Icons.volume_up_rounded
+                      : Icons.volume_off_rounded,
+                  color: KColors.teal),
+              title: Text('Sounds and vibration',
+                  style: TextStyle(color: s.text, fontSize: 15.5)),
+              subtitle: Text(
+                  'Feedback when you send, receive, react and post',
+                  style: TextStyle(color: s.muted, fontSize: 12.5)),
+              onChanged: (v) {
+                ref.read(soundsProvider.notifier).state = v;
+                Feedback.enabled = v;
+                if (v) Feedback.tap();
+              },
             ),
           ]),
 

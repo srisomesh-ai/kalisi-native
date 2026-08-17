@@ -6,6 +6,7 @@ import '../data/db/database.dart';
 import '../data/push/push_service.dart';
 import '../data/call/call_service.dart';
 import '../util/mask.dart';
+import '../util/feedback.dart';
 import '../features/status/status_model.dart';
 import '../features/settings/backup_screen.dart';
 import '../data/api/api_client.dart';
@@ -100,6 +101,9 @@ final typingProvider =
     StateNotifierProvider<TypingNotifier, Map<String, int>>(
         (ref) => TypingNotifier());
 
+/// Whether the app makes its little sounds and taps.
+final soundsProvider = StateProvider<bool>((ref) => true);
+
 /// Lets any screen ask the shell to switch tabs.
 final goToTabProvider = StateProvider<int?>((ref) => null);
 
@@ -147,12 +151,9 @@ class Poller {
       if (latest == null) return;
       final openId = _ref.read(openChatIdProvider);
       if (openId != null && openId == latest.contactId) {
-        // Already looking at this chat: no banner, but still a soft tone
-        // so you notice the reply, the way WhatsApp does.
-        try {
-          SystemSound.play(SystemSoundType.click);
-          HapticFeedback.lightImpact();
-        } catch (_) {}
+        // Already looking at this chat: no banner, but a soft tone so the
+        // reply is noticed.
+        Feedback.messageReceived();
         return;
       }
 
@@ -167,6 +168,7 @@ class Poller {
             ? 'New message'
             : Mask.sensitive(latest.body!),
       };
+      Feedback.messageElsewhere();
       await PushService.showMessage(
         title: who,
         body: body.length > 80 ? '${body.substring(0, 80)}…' : body,

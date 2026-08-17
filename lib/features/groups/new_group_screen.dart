@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../theme/colors.dart';
 import '../../app/providers.dart';
+import '../../util/feedback.dart';
 import '../../data/db/database.dart';
 import '../../widgets/avatar.dart';
 import '../chats/chat_view.dart';
@@ -50,6 +51,7 @@ class _NewGroupScreenState extends ConsumerState<NewGroupScreen> {
             name: name,
             members: members,
           );
+      Feedback.groupCreated();
       if (mounted) {
         Navigator.of(context).pushReplacement(MaterialPageRoute(
           builder: (_) => ChatView(contact: group),

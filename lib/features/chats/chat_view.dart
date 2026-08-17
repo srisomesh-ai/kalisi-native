@@ -19,6 +19,7 @@ import '../../data/db/database.dart';
 import '../../util/ids.dart';
 import '../../widgets/avatar.dart';
 import '../../util/mask.dart';
+import '../../util/feedback.dart';
 import '../contact/contact_details.dart';
 import '../groups/group_info_screen.dart';
 import '../call/call_screen.dart';
@@ -102,11 +103,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
     final text = _input.text.trim();
     if (text.isEmpty || _sending) return;
     _input.clear();
-    // small confirmation tap, like WhatsApp's send pop
-    try {
-      SystemSound.play(SystemSoundType.click);
-      HapticFeedback.selectionClick();
-    } catch (_) {}
+    Feedback.messageSent();
     setState(() => _sending = true);
     try {
       final me = ref.read(activePersonaProvider).valueOrNull;
@@ -220,6 +217,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
           );
       _scrollToBottom();
     } catch (_) {
+      Feedback.failed();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not send photo')),
@@ -332,6 +330,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
         ),
         path: p,
       );
+      Feedback.recordStart();
       _recStart = DateTime.now();
       _recSecs = 0;
       _recTicker?.cancel();
@@ -352,6 +351,7 @@ class _ChatViewState extends ConsumerState<ChatView> {
 
   /// Stop and keep the clip for preview (not sent yet).
   Future<void> _stopRecording() async {
+    Feedback.recordStop();
     _recTicker?.cancel();
     try {
       final path = await _recorder.stop();
@@ -883,9 +883,11 @@ class _BubbleState extends ConsumerState<_Bubble> {
         await ForwardSheet.open(context, ref, message);
         break;
       case 'star':
+        Feedback.starred();
         await ref.read(dbProvider).setStarred(message.id, !message.starred);
         break;
       case 'delete':
+        Feedback.messageDeleted();
         if (mine) {
           await ref.read(messageRepoProvider).deleteForEveryone(me, message);
         } else {
@@ -894,6 +896,7 @@ class _BubbleState extends ConsumerState<_Bubble> {
         break;
       default:
         // anything else is an emoji reaction
+        Feedback.reaction();
         await ref.read(messageRepoProvider).reactTo(me, message, result);
     }
   }
@@ -947,6 +950,7 @@ class _BubbleState extends ConsumerState<_Bubble> {
       ),
     );
     if (text == null || text.isEmpty || text == message.body) return;
+    Feedback.messageEdited();
     final me = ref.read(activePersonaProvider).valueOrNull;
     if (me == null) return;
     await ref.read(messageRepoProvider).editText(me, message, text);
