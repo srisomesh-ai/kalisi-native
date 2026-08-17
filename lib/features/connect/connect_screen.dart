@@ -5,7 +5,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/colors.dart';
 import '../../app/providers.dart';
-import '../../util/feedback.dart';
+import '../../util/buzz.dart';
 import '../../data/api/api_client.dart';
 import '../../data/repositories/contacts_repository.dart';
 
@@ -55,7 +55,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
     });
     try {
       final contact = await ref.read(contactsRepoProvider).addFriend(me, handle);
-      Feedback.requestSent();
+      Buzz.requestSent();
       setState(() {
         _busy = false;
         _msgOk = true;
@@ -90,9 +90,9 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
     try {
       await ref.read(contactsRepoProvider).actOnRequest(me, req, accept);
       if (accept) {
-        Feedback.requestAccepted();
+        Buzz.requestAccepted();
       } else {
-        Feedback.tap();
+        Buzz.tap();
       }
       ref.read(requestsRefreshProvider.notifier).state++;
       if (mounted) {

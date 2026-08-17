@@ -6,7 +6,7 @@ import '../data/db/database.dart';
 import '../data/push/push_service.dart';
 import '../data/call/call_service.dart';
 import '../util/mask.dart';
-import '../util/feedback.dart';
+import '../util/buzz.dart';
 import '../features/status/status_model.dart';
 import '../features/settings/backup_screen.dart';
 import '../data/api/api_client.dart';
@@ -153,7 +153,7 @@ class Poller {
       if (openId != null && openId == latest.contactId) {
         // Already looking at this chat: no banner, but a soft tone so the
         // reply is noticed.
-        Feedback.messageReceived();
+        Buzz.messageReceived();
         return;
       }
 
@@ -168,7 +168,7 @@ class Poller {
             ? 'New message'
             : Mask.sensitive(latest.body!),
       };
-      Feedback.messageElsewhere();
+      Buzz.messageElsewhere();
       await PushService.showMessage(
         title: who,
         body: body.length > 80 ? '${body.substring(0, 80)}…' : body,

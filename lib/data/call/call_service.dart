@@ -9,7 +9,7 @@ import '../db/database.dart';
 import '../api/api_client.dart';
 import '../crypto/kalisi_crypto.dart';
 import '../../util/ids.dart';
-import '../../util/feedback.dart';
+import '../../util/buzz.dart';
 
 enum CallState { idle, calling, ringing, connecting, connected, ended }
 
@@ -314,7 +314,7 @@ class CallService extends ChangeNotifier {
     }
     await _logCall();
     await _cleanup();
-    Feedback.callEnded();
+    Buzz.callEnded();
     _setState(CallState.ended);
   }
 
@@ -436,7 +436,7 @@ class CallService extends ChangeNotifier {
       if (s == RTCPeerConnectionState.RTCPeerConnectionStateConnected) {
         _dropTimer?.cancel();
         _stopRinging();
-        Feedback.callConnected();
+        Buzz.callConnected();
         connectedAt ??= DateTime.now();
         _startTicker();
         _setState(CallState.connected);

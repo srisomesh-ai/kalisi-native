@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 /// Uses the system's own click and haptics, so nothing is bundled and the
 /// phone's silent switch is respected. Everything is fire-and-forget: a
 /// failure here should never interrupt what the user was doing.
-class Feedback {
+class Buzz {
   static bool enabled = true;
 
   // ---- building blocks ----

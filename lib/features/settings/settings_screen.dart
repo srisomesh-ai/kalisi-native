@@ -8,7 +8,7 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:image_cropper/image_cropper.dart';
 import '../../theme/colors.dart';
 import '../../app/providers.dart';
-import '../../util/feedback.dart';
+import '../../util/buzz.dart';
 import '../../data/crypto/kalisi_crypto.dart';
 import '../../widgets/avatar.dart';
 import 'backup_screen.dart';
@@ -109,8 +109,8 @@ class SettingsScreen extends ConsumerWidget {
                   style: TextStyle(color: s.muted, fontSize: 12.5)),
               onChanged: (v) {
                 ref.read(soundsProvider.notifier).state = v;
-                Feedback.enabled = v;
-                if (v) Feedback.tap();
+                Buzz.enabled = v;
+                if (v) Buzz.tap();
               },
             ),
           ]),

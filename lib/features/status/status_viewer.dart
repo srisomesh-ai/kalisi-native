@@ -6,7 +6,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:video_player/video_player.dart';
 import '../../theme/colors.dart';
 import '../../app/providers.dart';
-import '../../util/feedback.dart';
+import '../../util/buzz.dart';
 import '../../data/db/database.dart';
 import '../../widgets/avatar.dart';
 import 'status_model.dart';
@@ -119,7 +119,7 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
 
   void _next() {
     if (_i < widget.items.length - 1) {
-      Feedback.statusAdvance();
+      Buzz.statusAdvance();
       setState(() => _i++);
       _player.stop();
       _progress.duration = _perStatus;
@@ -131,7 +131,7 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
 
   void _prev() {
     if (_i > 0) {
-      Feedback.statusAdvance();
+      Buzz.statusAdvance();
       setState(() => _i--);
       _player.stop();
       _progress.duration = _perStatus;
@@ -215,7 +215,7 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
   }
 
   Future<void> _react(String emoji) async {
-    Feedback.reaction();
+    Buzz.reaction();
     final me = ref.read(activePersonaProvider).valueOrNull;
     final sid = _sid;
     if (me == null || sid == null) return;
@@ -453,7 +453,7 @@ class _StatusViewerState extends ConsumerState<StatusViewer>
             statusId: sid,
           );
       ref.read(statusRefreshProvider.notifier).state++;
-      Feedback.statusDeleted();
+      Buzz.statusDeleted();
       if (mounted) {
         Navigator.of(context).maybePop();
         ScaffoldMessenger.of(context).showSnackBar(
