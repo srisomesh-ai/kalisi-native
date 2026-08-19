@@ -525,6 +525,8 @@ class CallService extends ChangeNotifier {
         clientId: obj['cid'] as String,
         iv: enc.iv,
         blob: enc.blob,
+        // an offer must wake a closed phone; the rest is silent signalling
+        push: kind == 'call-offer' ? 'call-offer' : 'call',
       );
     } catch (_) {}
   }

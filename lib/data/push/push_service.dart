@@ -34,6 +34,10 @@ class PushService {
   /// app can open that conversation.
   static void Function(String fromKalId)? onOpenChat;
 
+  /// Called when a call push arrives, so the app can start polling for the
+  /// offer immediately rather than waiting for the next tick.
+  static void Function()? onIncomingCall;
+
   /// A tap that arrived before the app was ready to handle it.
   static String? _pendingOpen;
 
@@ -97,6 +101,17 @@ class PushService {
         _pendingOpen = initial.data['from']?.toString();
       }
 
+      // Calls ring louder and longer than a message alert.
+      final callChannel = AndroidNotificationChannel(
+        'kalisi_calls',
+        'Calls',
+        description: 'Incoming voice calls',
+        importance: Importance.max,
+        enableVibration: true,
+        vibrationPattern: Int64List.fromList([0, 700, 400, 700, 400, 700]),
+        playSound: true,
+      );
+
       final channel = AndroidNotificationChannel(
         'kalisi_messages_v2',
         'Messages',
@@ -110,17 +125,23 @@ class PushService {
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>()
           ?.createNotificationChannel(channel);
+      await _local
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.createNotificationChannel(callChannel);
 
       // permission (Android 13+ / iOS)
       await FirebaseMessaging.instance.requestPermission();
 
       // show a heads-up notification when a message arrives in foreground
       FirebaseMessaging.onMessage.listen((msg) {
+        if (msg.data['type']?.toString() == 'call') onIncomingCall?.call();
         final n = msg.notification;
         // The app is open. Stay quiet if the message is for the chat already
         // on screen, or for a chat the user muted — otherwise it would pop a
         // banner over the very conversation being read.
-        if (suppress?.call(msg.data) == true) return;
+        final isCall = msg.data['type']?.toString() == 'call';
+        if (!isCall && suppress?.call(msg.data) == true) return;
         if (n != null) {
           _local.show(
             n.hashCode,

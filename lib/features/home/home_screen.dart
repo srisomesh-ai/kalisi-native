@@ -32,6 +32,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         PushService.registerToken(ref.read(apiProvider), me.kalId, me.token);
       }
 
+      // A call push means an offer is waiting — poll straight away so the
+      // ringing screen appears without waiting for the next tick.
+      PushService.onIncomingCall = () {
+        ref.read(pollerProvider).setFast(true);
+      };
+
       // Tapping a notification opens that conversation.
       PushService.onOpenChat = (fromKalId) async {
         final me = ref.read(activePersonaProvider).valueOrNull;

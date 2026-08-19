@@ -18,6 +18,8 @@ PERMS = [
     "android.permission.POST_NOTIFICATIONS",
     "android.permission.MODIFY_AUDIO_SETTINGS",
     "android.permission.BLUETOOTH_CONNECT",
+    "android.permission.USE_FULL_SCREEN_INTENT",
+    "android.permission.WAKE_LOCK",
 ]
 
 # 1) permissions, right after the <manifest ...> tag

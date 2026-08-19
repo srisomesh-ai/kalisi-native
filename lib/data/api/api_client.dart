@@ -80,6 +80,8 @@ class ApiClient {
     required String clientId,
     required String iv,
     required String blob,
+    String? push,   // 'message' | 'call-offer' | 'call' — the payload is
+                    // encrypted, so the server needs telling
   }) =>
       call('send', {
         'kal_id': kalId,
@@ -88,6 +90,7 @@ class ApiClient {
         'client_id': clientId,
         'iv': iv,
         'blob': blob,
+        if (push != null) 'push': push,
       });
 
   Future<Map<String, dynamic>> fetch({
