@@ -61,10 +61,11 @@ flutter_launcher_icons:
   ios: false
   image_path: "ci/icon.png"
   min_sdk_android: 23
-  adaptive_icon_background: "#F5A83C"
-  adaptive_icon_foreground: "ci/icon.png"
+  adaptive_icon_background: "#0E5C5C"
+  adaptive_icon_foreground: "ci/icon_fg.png"
 
 flutter:
   uses-material-design: true
   assets:
     - ci/icon.png
+    - ci/icon_fg.png

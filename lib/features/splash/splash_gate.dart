@@ -217,7 +217,7 @@ class _UnlockSplashState extends State<UnlockSplash>
   }
 }
 
-/// A padlock whose shackle lifts and rotates open as [open] goes 0 → 1.
+/// The Kalisi mark: an envelope whose flap opens as [open] goes 0 → 1.
 class _Padlock extends StatelessWidget {
   final double open;
   const _Padlock({required this.open});
@@ -226,79 +226,70 @@ class _Padlock extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = open.clamp(0.0, 1.0);
     return SizedBox(
-      width: 116,
-      height: 132,
-      child: Stack(
-        alignment: Alignment.bottomCenter,
-        children: [
-          // shackle — pivots on its lower-left as it opens
-          Positioned(
-            bottom: 58,
-            child: Transform.translate(
-              offset: Offset(0, -6 * t),
-              child: Transform.rotate(
-                angle: -0.52 * t, // about 30 degrees
-                alignment: Alignment.bottomLeft,
-                child: CustomPaint(
-                  size: const Size(58, 58),
-                  painter: _ShacklePainter(),
-                ),
-              ),
-            ),
-          ),
-          // body
-          Container(
-            width: 92,
-            height: 72,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.25),
-                  blurRadius: 20,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            alignment: Alignment.center,
-            child: Container(
-              width: 16,
-              height: 16,
-              decoration: const BoxDecoration(
-                color: KColors.teal,
-                shape: BoxShape.circle,
-              ),
-            ),
-          ),
-        ],
-      ),
+      width: 168,
+      height: 116,
+      child: CustomPaint(painter: _MarkPainter(open: t)),
     );
   }
 }
 
-class _ShacklePainter extends CustomPainter {
+/// Draws the envelope body, the K, and the amber flap swinging open.
+class _MarkPainter extends CustomPainter {
+  final double open;
+  _MarkPainter({required this.open});
+
   @override
   void paint(Canvas canvas, Size size) {
-    final p = Paint()
-      ..color = Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 11
-      ..strokeCap = StrokeCap.round;
+    final w = size.width, h = size.height;
+    final bodyW = w * 0.74;
 
-    final r = size.width / 2;
-    final path = Path()
-      ..moveTo(0, size.height)
-      ..lineTo(0, r)
-      ..arcToPoint(
-        Offset(size.width, r),
-        radius: Radius.circular(r),
-        clockwise: true,
-      )
-      ..lineTo(size.width, size.height);
-    canvas.drawPath(path, p);
+    // envelope body
+    final body = RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, 0, bodyW, h),
+      const Radius.circular(14),
+    );
+    canvas.drawRRect(body, Paint()..color = Colors.white);
+
+    // flap — swings out to the right as it opens
+    canvas.save();
+    canvas.translate(bodyW, h / 2);
+    canvas.scale(0.55 + 0.45 * open, 1.0);
+    final flap = Path()
+      ..moveTo(0, -h / 2)
+      ..lineTo(w - bodyW, 0)
+      ..lineTo(0, h / 2)
+      ..close();
+    canvas.drawPath(
+      flap,
+      Paint()
+        ..shader = const LinearGradient(
+          colors: [KColors.amber, Color(0xFFD9720F)],
+        ).createShader(Rect.fromLTWH(0, -h / 2, w - bodyW, h)),
+    );
+    canvas.restore();
+
+    // the K
+    final k = Paint()
+      ..color = KColors.teal
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 9
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round;
+
+    final left = bodyW * 0.28;
+    final top = h * 0.24;
+    final bottom = h * 0.76;
+    final mid = h / 2;
+    final armX = bodyW * 0.66;
+
+    canvas.drawLine(Offset(left, top), Offset(left, bottom), k);
+    final arms = Path()
+      ..moveTo(armX, top)
+      ..lineTo(left + 9, mid)
+      ..lineTo(armX, bottom);
+    canvas.drawPath(arms, k);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _MarkPainter old) => old.open != open;
 }
