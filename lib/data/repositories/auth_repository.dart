@@ -23,8 +23,10 @@ class AuthRepository {
     final salt = saltRes['salt']?.toString();
     if (salt == null || salt.isEmpty) throw ApiException('no_recovery');
 
-    final keys = KalisiCrypto.keyPairFromPassword(username, password, salt);
-    final verifier = KalisiCrypto.verifierFor(username, password, salt);
+    final keys =
+        await KalisiCrypto.keyPairFromPasswordAsync(username, password, salt);
+    final verifier =
+        await KalisiCrypto.verifierForAsync(username, password, salt);
 
     final res = await _api.recoverLogin(
       username: username,
@@ -62,13 +64,15 @@ class AuthRepository {
     // only here.
     String? salt;
     String? verifier;
-    final keys = password == null || password.isEmpty
-        ? await KalisiCrypto.generateKeyPair()
-        : () {
-            salt = KalisiCrypto.newSalt();
-            verifier = KalisiCrypto.verifierFor(username, password, salt!);
-            return KalisiCrypto.keyPairFromPassword(username, password, salt!);
-          }();
+    late final ({String privateJwk, String publicJwk}) keys;
+    if (password == null || password.isEmpty) {
+      keys = await KalisiCrypto.generateKeyPair();
+    } else {
+      salt = KalisiCrypto.newSalt();
+      verifier = await KalisiCrypto.verifierForAsync(username, password, salt!);
+      keys = await KalisiCrypto.keyPairFromPasswordAsync(
+          username, password, salt!);
+    }
 
     final res = await _api.register(
       name: name,

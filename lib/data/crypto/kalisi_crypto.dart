@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
@@ -90,6 +91,24 @@ class KalisiCrypto {
     String saltB64,
   ) =>
       _b64(_stretch('kalisi-verify:$username:$password', saltB64, 60000));
+
+  // Stretching a password is deliberately slow — 180k rounds in total — so it
+  // must not run on the UI thread, or the app freezes and Android offers to
+  // close it. These run the work on a background isolate.
+
+  static Future<({String privateJwk, String publicJwk})> keyPairFromPasswordAsync(
+    String username,
+    String password,
+    String saltB64,
+  ) =>
+      compute(_kdfKeyPair, [username, password, saltB64]);
+
+  static Future<String> verifierForAsync(
+    String username,
+    String password,
+    String saltB64,
+  ) =>
+      compute(_kdfVerifier, [username, password, saltB64]);
 
   static BigInt _bytesToBigInt(Uint8List b) {
     var r = BigInt.zero;
@@ -265,3 +284,11 @@ class KalisiCrypto {
     return base64.decode(t);
   }
 }
+
+
+/// Top-level so they can run on a background isolate.
+({String privateJwk, String publicJwk}) _kdfKeyPair(List<String> a) =>
+    KalisiCrypto.keyPairFromPassword(a[0], a[1], a[2]);
+
+String _kdfVerifier(List<String> a) =>
+    KalisiCrypto.verifierFor(a[0], a[1], a[2]);

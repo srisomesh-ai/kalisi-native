@@ -198,6 +198,17 @@ class KalisiDb extends _$KalisiDb {
   }
 
   // ---- Messages ----
+  /// Just the newest message in a chat, for the list preview.
+  ///
+  /// The list used to stream every message in every chat, and message bodies
+  /// hold base64 photos and voice notes — enough to lock up the app.
+  Stream<Message?> watchLastMessage(String contactId) =>
+      (select(messages)
+            ..where((t) => t.contactId.equals(contactId))
+            ..orderBy([(t) => OrderingTerm.desc(t.ts)])
+            ..limit(1))
+          .watchSingleOrNull();
+
   Stream<List<Message>> watchMessages(String contactId) =>
       (select(messages)
             ..where((t) => t.contactId.equals(contactId))

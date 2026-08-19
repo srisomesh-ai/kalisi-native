@@ -210,8 +210,9 @@ class Poller {
             await _ref.read(contactsRepoProvider).syncState(me);
           } catch (_) {}
         }
-        // status feed — refresh roughly every 15s so new updates just appear
-        if (_ticks % 5 == 0) {
+        // The status feed carries full photo and video payloads, so pull it
+        // sparingly — about once a minute rather than every 15 seconds.
+        if (_ticks % 20 == 0) {
           _ref.read(statusRefreshProvider.notifier).state++;
         }
         // keep the on-phone backup current, quietly

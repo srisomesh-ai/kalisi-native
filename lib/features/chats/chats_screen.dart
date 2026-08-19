@@ -29,6 +29,12 @@ final contactsStreamProvider = StreamProvider<List<Contact>>((ref) async* {
 /// Whether the list is showing archived chats.
 final showArchivedProvider = StateProvider<bool>((ref) => false);
 
+/// Newest message in a chat, for the row preview. Streaming the whole chat
+/// here froze the app once media was involved.
+final lastMessageProvider =
+    StreamProvider.family<Message?, String>((ref, contactId) =>
+        ref.watch(dbProvider).watchLastMessage(contactId));
+
 class ChatsScreen extends ConsumerWidget {
   const ChatsScreen({super.key});
 
@@ -294,21 +300,22 @@ class _ChatRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = KScheme.of(context);
-    final msgs = ref.watch(messagesProvider(contact.id));
+    final msgs = ref.watch(lastMessageProvider(contact.id));
 
     String preview = 'Tap to chat';
     String time = '';
     bool mineLast = false;
     bool read = false;
 
-    msgs.whenData((list) {
-      if (list.isNotEmpty) {
-        final m = list.last;
+    msgs.whenData((m) {
+      if (m != null) {
         mineLast = m.fromMe == 'me';
         read = m.status == 'read';
         preview = switch (m.kind) {
           'img' => '📷 Photo',
           'voice' => '🎤 Voice message',
+          'file' => '📎 ${m.fileName ?? 'Document'}',
+          'call' => '📞 ${m.body ?? 'Call'}',
           _ => Mask.sensitive((m.body ?? '').replaceAll('\n', ' ')),
         };
         time = fmtTime(m.ts);

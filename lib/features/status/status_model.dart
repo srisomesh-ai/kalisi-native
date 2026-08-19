@@ -151,12 +151,19 @@ final statusRefreshProvider = StateProvider<int>((ref) => 0);
 /// still unseen — so the chat list can mark them.
 final statusOwnersProvider =
     Provider<({Set<String> all, Set<String> unseen})>((ref) {
-  final feed = ref.watch(statusFeedProvider).valueOrNull;
-  if (feed == null) return (all: <String>{}, unseen: <String>{});
-  return (
-    all: feed.others.map((s) => s.kalId).toSet(),
-    unseen: feed.others.where((s) => !s.seen).map((s) => s.kalId).toSet(),
-  );
+  // select() so this only recomputes when the id sets change — watching the
+  // whole feed made every chat row rebuild on any status change, and the feed
+  // carries full photo and video payloads.
+  return ref.watch(statusFeedProvider.select((async) {
+    final feed = async.valueOrNull;
+    if (feed == null) {
+      return (all: <String>{}, unseen: <String>{});
+    }
+    return (
+      all: feed.others.map((s) => s.kalId).toSet(),
+      unseen: feed.others.where((s) => !s.seen).map((s) => s.kalId).toSet(),
+    );
+  }));
 });
 
 /// Pulls the feed and separates my own updates from my contacts'.
