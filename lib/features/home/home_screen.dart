@@ -55,7 +55,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       // While the app is open, don't raise a banner for the chat already on
       // screen, or for a muted chat.
       PushService.suppress = (data) {
-        final from = data['from']?.toString() ?? data['kal_id']?.toString();
+        final from = data['sender']?.toString() ?? data['from']?.toString();
         if (from == null) return false;
         final openId = ref.read(openChatIdProvider);
         if (openId == null) return false;

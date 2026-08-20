@@ -92,13 +92,13 @@ class PushService {
 
       // tapped while the app was in the background
       FirebaseMessaging.onMessageOpenedApp.listen((msg) {
-        _handleTap(msg.data['from']?.toString());
+        _handleTap((msg.data['sender'] ?? msg.data['from'])?.toString());
       });
 
       // tapped while the app was closed entirely
       final initial = await FirebaseMessaging.instance.getInitialMessage();
       if (initial != null) {
-        _pendingOpen = initial.data['from']?.toString();
+        _pendingOpen = (initial.data['sender'] ?? initial.data['from'])?.toString();
       }
 
       // Calls ring louder and longer than a message alert.
@@ -147,7 +147,7 @@ class PushService {
             n.hashCode,
             n.title ?? 'Kalisi',
             n.body ?? 'New message',
-            payload: msg.data['from']?.toString(),
+            payload: (msg.data['sender'] ?? msg.data['from'])?.toString(),
             const NotificationDetails(
               android: AndroidNotificationDetails(
                 'kalisi_messages_v2',
