@@ -12,6 +12,7 @@ import '../../util/buzz.dart';
 import '../../data/crypto/kalisi_crypto.dart';
 import '../../widgets/avatar.dart';
 import 'backup_screen.dart';
+import 'notification_check_screen.dart';
 
 /// Settings — profile, privacy, appearance, account.
 class SettingsScreen extends ConsumerWidget {
@@ -89,6 +90,17 @@ class SettingsScreen extends ConsumerWidget {
               subtitle: 'What the server can see, your key',
               onTap: () => Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => const PrivacyDetailsScreen(),
+              )),
+            ),
+          ]),
+
+          _Group(title: 'NOTIFICATIONS', children: [
+            _Tile(
+              icon: Icons.notifications_active_outlined,
+              title: 'Notification check',
+              subtitle: 'Find out why alerts are not arriving',
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => const NotificationCheckScreen(),
               )),
             ),
           ]),

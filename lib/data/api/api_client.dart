@@ -221,6 +221,20 @@ class ApiClient {
   }) =>
       call('group_info', {'kal_id': kalId, 'token': token, 'gid': gid});
 
+  /// Why isn't push working? Reports each step of the chain.
+  Future<Map<String, dynamic>> pushCheck({
+    required String kalId,
+    required String token,
+  }) =>
+      call('push_check', {'kal_id': kalId, 'token': token});
+
+  /// Send a test notification to this device.
+  Future<Map<String, dynamic>> pushTest({
+    required String kalId,
+    required String token,
+  }) =>
+      call('push_test', {'kal_id': kalId, 'token': token});
+
   /// Ask for the salt tied to a username, so the key can be rebuilt.
   Future<Map<String, dynamic>> recoverSalt({required String username}) =>
       call('recover_salt', {'username': username});
